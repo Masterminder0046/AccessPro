@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+
+{% block title %}Candidate Management — AssessPro{% endblock %}
+{% block page_title %}Candidate Directory & Assignments{% endblock %}
+
+{% block topbar_actions %}
+  <button type="button" class="btn btn-secondary" onclick="openModal('modal-import-candidates')">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+    Import CSV
+  </button>
+  <button type="button" class="btn btn-primary" onclick="openModal('modal-create-candidate')">
+    + Add Candidate
+  </button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Enrolled Candidates ({{ candidates | length }})</h2>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Roll No / ID</th>
+          <th>Candidate Name</th>
+          <th>Email Address</th>
+          <th>Department & College</th>
+          <th>Assigned Exams</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if candidates %}
+          {% for c in candidates %}
+            <tr>
+              <td>
+                <span class="badge" style="background: #f1f5f9; color: #0f172a; font-family: var(--font-mono); font-weight: 700;">
+                  {{ c.candidate_id }}
+                </span>
+              </td>
+              <td>
+                <div style="font-weight: 600; color: var(--navy-dark);">{{ c.name }}</div>
+                <div style="font-size: 0.78rem; color: var(--text-muted);">{{ c.phone or 'No phone' }}</div>
+              </td>
+              <td>{{ c.email }}</td>
+              <td>
+                <div>{{ c.department or 'N/A' }}</div>
+                <div style="font-size: 0.78rem; color: var(--text-muted);">{{ c.college or 'N/A' }}</div>
+              </td>
+              <td>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="viewCandidateAssignments({{ c.id }})">
+                  {{ c.assignments.count() }} Assigned &bull; View Links
+                </button>
+              </td>
+              <td>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn btn-sm btn-primary" onclick="viewCandidateAssignments({{ c.id }})">
+                    Exam Links
+                  </button>
+                  <form method="POST" action="{{ url_for('delete_candidate', id=c.id) }}" style="display:inline;" onsubmit="return confirm('Delete candidate {{ c.name }}? All attempts will be removed.');">
+                    <button type="submit" class="btn btn-sm btn-danger">&times;</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="6" style="text-align: center; padding: 36px; color: var(--text-muted);">
+              No candidates enrolled yet. Click "+ Add Candidate" or "Import CSV" to get started.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal: Add Single Candidate -->
+<div class="modal-backdrop" id="modal-create-candidate">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 class="modal-title">Register Candidate</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-create-candidate')">&times;</button>
+    </div>
+    <form method="POST" action="{{ url_for('create_candidate') }}">
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="cand-id">Candidate ID / Roll No *</label>
+            <input type="text" id="cand-id" name="candidate_id" class="form-control" placeholder="e.g. CAND-2026-002" required style="font-family: var(--font-mono);">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cand-name">Full Name *</label>
+            <input type="text" id="cand-name" name="name" class="form-control" placeholder="Candidate's legal name" required>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="cand-email">Email Address *</label>
+            <input type="email" id="cand-email" name="email" class="form-control" placeholder="candidate@example.com" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cand-phone">Contact Number</label>
+            <input type="text" id="cand-phone" name="phone" class="form-control" placeholder="+91 98765 00000">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="cand-dept">Department / Stream</label>
+            <input type="text" id="cand-dept" name="department" class="form-control" placeholder="Computer Science & Engineering">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="cand-college">College / University</label>
+            <input type="text" id="cand-college" name="college" class="form-control" placeholder="Engineering College / University">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="cand-asm">Immediately Assign Assessment (Optional)</label>
+          <select id="cand-asm" name="assign_assessment_id" class="form-control">
+            <option value="">-- Do Not Assign Yet --</option>
+            {% for asm in assessments %}
+              <option value="{{ asm.id }}">{{ asm.title }} ({{ asm.code }})</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-candidate')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Candidate</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Import CSV Candidates -->
+<div class="modal-backdrop" id="modal-import-candidates">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 class="modal-title">Bulk Candidate Import via CSV</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-import-candidates')">&times;</button>
+    </div>
+    <form method="POST" action="{{ url_for('import_candidates_csv') }}" enctype="multipart/form-data">
+      <div class="modal-body">
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px; margin-bottom: 16px; font-size: 0.85rem;">
+          <div style="font-weight: 700; color: var(--navy-dark); margin-bottom: 4px;">CSV File Format Specifications:</div>
+          <div>Expected column headers:</div>
+          <code style="display: block; background: #ffffff; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 4px; margin-top: 6px; font-family: var(--font-mono);">candidate_id,name,email,department,phone,college</code>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Select .CSV File *</label>
+          <input type="file" name="csv_file" accept=".csv" class="form-control" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Assign Assessment to All Imported Candidates (Optional)</label>
+          <select name="assign_assessment_id" class="form-control">
+            <option value="">-- Do Not Assign --</option>
+            {% for asm in assessments %}
+              <option value="{{ asm.id }}">{{ asm.title }} ({{ asm.code }})</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-import-candidates')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Upload & Import</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Candidate Examination Links (Managed by admin.js) -->
+<div class="modal-backdrop" id="modal-candidate-links">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div>
+        <h3 class="modal-title">Unique Examination Links</h3>
+        <div id="candidate-links-name" style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;"></div>
+      </div>
+      <button type="button" class="modal-close" onclick="closeModal('modal-candidate-links')">&times;</button>
+    </div>
+    <div class="modal-body" id="candidate-links-content">
+      <!-- Injected via viewCandidateAssignments() in admin.js -->
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal('modal-candidate-links')">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

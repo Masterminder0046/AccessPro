@@ -1,0 +1,440 @@
+{% extends "base.html" %}
+
+{% block title %}
+  {% if mode == 'manage_assessment' %}
+    Manage Questions — {{ assessment.title }}
+  {% else %}
+    Question Bank Management — AssessPro
+  {% endif %}
+{% endblock %}
+
+{% block page_title %}
+  {% if mode == 'manage_assessment' %}
+    Assessment Questions: {{ assessment.title }} ({{ assessment.code }})
+  {% else %}
+    Enterprise Question Bank
+  {% endif %}
+{% endblock %}
+
+{% block topbar_actions %}
+  {% if mode == 'manage_assessment' %}
+    <a href="{{ url_for('admin_assessments') }}" class="btn btn-secondary">&larr; Back to Assessments</a>
+    <button type="button" class="btn btn-primary" onclick="openModal('modal-bulk-import')">
+      Bulk Import to Assessment
+    </button>
+  {% else %}
+    <button type="button" class="btn btn-secondary" onclick="openModal('modal-create-question')">
+      + Single Question
+    </button>
+    <button type="button" class="btn btn-primary" onclick="openModal('modal-bulk-import')">
+      Bulk Import (Text / CSV)
+    </button>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+{% if mode == 'manage_assessment' %}
+  <!-- Manage Assessment Questions Mode -->
+  <div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+      <h2 class="card-title">Attached Questions ({{ assessment.questions | length }})</h2>
+      <div>
+        <span class="badge badge-info">Total Marks: {{ assessment.total_marks }}</span>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Question Statement</th>
+            <th>Section</th>
+            <th>Marks</th>
+            <th>Neg. Marks</th>
+            <th>Time Limit</th>
+            <th>Correct Key</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if assessment.questions %}
+            {% for aq in assessment.questions %}
+              <tr>
+                <td><strong>#{{ aq.order_index }}</strong></td>
+                <td>
+                  <div style="font-weight: 600; color: var(--navy-dark);">{{ aq.question.question_text }}</div>
+                  <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">
+                    {% for opt in aq.question.options %}
+                      <span style="margin-right: 12px; {% if opt.is_correct %}color: #059669; font-weight:700;{% endif %}">
+                        {{ opt.option_key }}) {{ opt.option_text }}
+                      </span>
+                    {% endfor %}
+                  </div>
+                </td>
+                <td><span class="badge" style="background: #f1f5f9; color: #334155;">{{ aq.question.section.name if aq.question.section else 'General' }}</span></td>
+                <td><strong>{{ aq.effective_marks }}</strong></td>
+                <td><span style="color: #dc2626;">-{{ aq.effective_negative_marks }}</span></td>
+                <td>{{ aq.effective_time_limit }}s</td>
+                <td>
+                  {% for opt in aq.question.options %}
+                    {% if opt.is_correct %}
+                      <span class="badge badge-success">{{ opt.option_key }}</span>
+                    {% endif %}
+                  {% endfor %}
+                </td>
+                <td>
+                  <form method="POST" action="{{ url_for('manage_assessment_questions', id=assessment.id) }}" style="display:inline;" onsubmit="return confirm('Remove question from this assessment?');">
+                    <input type="hidden" name="action" value="remove_question">
+                    <input type="hidden" name="aq_id" value="{{ aq.id }}">
+                    <button type="submit" class="btn btn-sm btn-danger">Remove</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="8" style="text-align: center; padding: 36px; color: var(--text-muted);">
+                No questions attached to this assessment yet. Use the selector below or bulk import questions.
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Attach Questions From Bank -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Add Available Questions from Question Bank ({{ available_questions | length }})</h3>
+    </div>
+    <form method="POST" action="{{ url_for('manage_assessment_questions', id=assessment.id) }}">
+      <input type="hidden" name="action" value="attach_questions">
+      <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+        {% if available_questions %}
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            {% for q in available_questions %}
+              <label class="form-check" style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 12px; border-radius: 6px;">
+                <input type="checkbox" name="question_ids" value="{{ q.id }}" class="form-check-input">
+                <div style="flex: 1;">
+                  <div style="font-weight: 600; color: var(--navy-dark);">{{ q.question_text }}</div>
+                  <div style="font-size: 0.78rem; color: var(--text-muted); display: flex; gap: 12px; margin-top: 4px;">
+                    <span>Section: {{ q.section.name if q.section else 'General' }}</span>
+                    <span>Marks: {{ q.marks }}</span>
+                    <span>Neg: -{{ q.negative_marks }}</span>
+                    <span>Time: {{ q.time_limit_seconds }}s</span>
+                  </div>
+                </div>
+              </label>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div style="text-align: center; padding: 20px; color: var(--text-muted);">
+            All questions in bank are already attached, or question bank is empty.
+          </div>
+        {% endif %}
+      </div>
+      <div class="card-footer">
+        <button type="submit" class="btn btn-primary" {% if not available_questions %}disabled{% endif %}>
+          Attach Selected Questions
+        </button>
+      </div>
+    </form>
+  </div>
+
+{% else %}
+  <!-- Question Bank Mode -->
+  <div class="card">
+    <div class="card-header">
+      <h2 class="card-title">All Questions in Bank ({{ questions | length }})</h2>
+    </div>
+    <div class="table-responsive">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Question Statement & Options</th>
+            <th>Section</th>
+            <th>Marks</th>
+            <th>Neg. Marks</th>
+            <th>Time Limit</th>
+            <th>Correct Answer</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if questions %}
+            {% for q in questions %}
+              <tr>
+                <td><strong>{{ loop.index }}</strong></td>
+                <td>
+                  <div style="font-weight: 600; color: var(--navy-dark); font-size: 0.95rem;">{{ q.question_text }}</div>
+                  <div style="margin-top: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 0.82rem;">
+                    {% for opt in q.options %}
+                      <div style="padding: 3px 6px; border-radius: 4px; {% if opt.is_correct %}background: #ecfdf5; color: #065f46; font-weight:700;{% else %}background:#f8fafc; color:#475569;{% endif %}">
+                        <strong>{{ opt.option_key }})</strong> {{ opt.option_text }}
+                      </div>
+                    {% endfor %}
+                  </div>
+                </td>
+                <td><span class="badge" style="background:#f1f5f9; color:#0f172a;">{{ q.section.name if q.section else 'General' }}</span></td>
+                <td><strong>{{ q.marks }}</strong></td>
+                <td><span style="color: #dc2626;">-{{ q.negative_marks }}</span></td>
+                <td>{{ q.time_limit_seconds }}s</td>
+                <td>
+                  {% for opt in q.options %}
+                    {% if opt.is_correct %}
+                      <span class="badge badge-success">Option {{ opt.option_key }}</span>
+                    {% endif %}
+                  {% endfor %}
+                </td>
+                <td>
+                  <form method="POST" action="{{ url_for('delete_question', id=q.id) }}" style="display:inline;" onsubmit="return confirm('Delete this question permanently?');">
+                    <button type="submit" class="btn btn-sm btn-danger" title="Delete Question">&times;</button>
+                  </form>
+                </td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="8" style="text-align: center; padding: 36px; color: var(--text-muted);">
+                Question bank is empty. Click "Bulk Import (Text / CSV)" to paste your question sets.
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
+<!-- ===================================================================== -->
+<!-- MODAL: BULK QUESTION IMPORT (TEXT / CSV / SMART PARSER) -->
+<!-- ===================================================================== -->
+<div class="modal-backdrop" id="modal-bulk-import">
+  <div class="modal-content modal-lg">
+    <div class="modal-header">
+      <h3 class="modal-title">Bulk Question Import & Smart Parser</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-bulk-import')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 14px;">
+        Paste 10, 50, or 100 questions into the textarea below, or upload a CSV file. The smart parser automatically extracts question text, options, correct answers, timers, marks, and negative markings.
+      </p>
+
+      <div class="form-row" style="margin-bottom: 14px;">
+        <div class="form-group" style="flex: 1;">
+          <label class="form-label" for="bulk-target-assessment">Directly Attach to Assessment (Optional)</label>
+          <select id="bulk-target-assessment" class="form-control">
+            <option value="">-- Save to Question Bank Only --</option>
+            {% if mode == 'manage_assessment' %}
+              <option value="{{ assessment.id }}" selected>{{ assessment.title }} ({{ assessment.code }})</option>
+            {% else %}
+              {% for asm in assessments %}
+                <option value="{{ asm.id }}">{{ asm.title }} ({{ asm.code }})</option>
+              {% endfor %}
+            {% endif %}
+          </select>
+        </div>
+
+        <div class="form-group" style="flex: 1;">
+          <label class="form-label" for="bulk-target-section">Section / Category</label>
+          <select id="bulk-target-section" class="form-control">
+            <option value="">General</option>
+            {% for sec in sections %}
+              <option value="{{ sec.id }}">{{ sec.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <!-- Option 1: CSV Upload -->
+      <div style="background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 12px; margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
+        <span style="font-size: 0.85rem; font-weight: 600;">Or Upload CSV File (headers: question_text, option_a, option_b, option_c, option_d, answer, marks, negative_marks, time_limit):</span>
+        <input type="file" id="bulk-csv-file" accept=".csv" class="form-control" style="width: auto; font-size: 0.8rem;">
+      </div>
+
+      <!-- Option 2: Textarea Bulk Input -->
+      <div class="form-group">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <label class="form-label" for="bulk-questions-input" style="margin: 0;">Paste Formatted Questions</label>
+          <button type="button" class="btn btn-sm btn-secondary" onclick="loadSampleQuestionsText()">
+            Insert Example Template
+          </button>
+        </div>
+        <textarea id="bulk-questions-input" class="form-control" rows="8" style="font-family: var(--font-mono); font-size: 0.85rem;" placeholder="1. What is Python?
+A) Database
+B) Programming Language
+C) Browser
+D) Operating System
+Answer: B
+Time: 30
+Marks: 2
+Negative: 0.5
+
+2. Which database is relational?
+A) MongoDB
+B) MySQL
+C) Redis
+D) Neo4j
+Answer: B
+Time: 45
+Marks: 2"></textarea>
+      </div>
+
+      <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 16px;">
+        <button type="button" class="btn btn-primary" id="btn-parse-bulk" onclick="parseBulkInput()">
+          Parse & Validate Questions
+        </button>
+        <span id="parsed-count-badge" class="badge badge-info" style="font-size: 0.85rem;">0 questions</span>
+      </div>
+
+      <!-- Errors / Warnings Container -->
+      <div id="bulk-errors" style="display: none;"></div>
+
+      <!-- Editable Preview Container -->
+      <h4 style="font-size: 0.95rem; color: var(--navy-dark); margin: 16px 0 10px;">Parsed Questions Preview</h4>
+      <div id="bulk-preview-list" style="max-height: 280px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; background: #fafafa;">
+        <div style="padding: 20px; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
+          No questions parsed yet. Paste questions above and click "Parse & Validate Questions".
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal('modal-bulk-import')">Close</button>
+      <button type="button" class="btn btn-success" id="btn-confirm-bulk-save" onclick="saveBulkQuestions()" disabled>
+        Confirm & Import to Bank
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ADD SINGLE QUESTION -->
+<div class="modal-backdrop" id="modal-create-question">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 class="modal-title">Add Single Question</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-create-question')">&times;</button>
+    </div>
+    <form method="POST" action="{{ url_for('create_question') }}">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label" for="sq-text">Question Statement *</label>
+          <textarea id="sq-text" name="question_text" class="form-control" rows="3" required placeholder="Enter question statement..."></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Option A *</label>
+            <input type="text" name="option_a" class="form-control" required placeholder="Option A text">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Option B *</label>
+            <input type="text" name="option_b" class="form-control" required placeholder="Option B text">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Option C</label>
+            <input type="text" name="option_c" class="form-control" placeholder="Option C text">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Option D</label>
+            <input type="text" name="option_d" class="form-control" placeholder="Option D text">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Correct Answer Option *</label>
+            <select name="correct_option" class="form-control" required>
+              <option value="A">Option A</option>
+              <option value="B">Option B</option>
+              <option value="C">Option C</option>
+              <option value="D">Option D</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Section</label>
+            <select name="section_id" class="form-control">
+              <option value="">General</option>
+              {% for sec in sections %}
+                <option value="{{ sec.id }}">{{ sec.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Marks</label>
+            <input type="number" step="0.5" name="marks" class="form-control" value="1.0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Negative Marks</label>
+            <input type="number" step="0.25" name="negative_marks" class="form-control" value="0.0">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Time Limit (Sec)</label>
+            <input type="number" name="time_limit_seconds" class="form-control" value="60">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-question')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save Question</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function loadSampleQuestionsText() {
+    const sample = `1. What is Python?
+A) Database
+B) Programming Language
+C) Web Browser
+D) Operating System
+Answer: B
+Time: 30
+Marks: 2
+Negative: 0.5
+
+2. Which SQL clause is used to filter records based on a specific condition?
+A) ORDER BY
+B) WHERE
+C) GROUP BY
+D) HAVING
+Answer: B
+Time: 45
+Marks: 2
+Negative: 0.5
+
+3. What is the output of 3 * 1 ** 3 in Python?
+A) 27
+B) 9
+C) 3
+D) 1
+Answer: C
+Time: 30
+Marks: 1
+Negative: 0.25
+
+4. In computer networking, which protocol provides reliable, connection-oriented data transmission?
+A) UDP
+B) TCP
+C) ICMP
+D) ARP
+Answer: B
+Time: 40
+Marks: 2
+Negative: 0.5`;
+
+    document.getElementById('bulk-questions-input').value = sample;
+    parseBulkInput();
+  }
+</script>
+{% endblock %}

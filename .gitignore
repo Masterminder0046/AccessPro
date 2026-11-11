@@ -1,0 +1,22 @@
+# Environment variables & secrets
+.env
+*.env
+*.token
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Instance and local SQLite database
+instance/
+*.db
+*.sqlite
+*.sqlite3
+
+# OS generated files
+.DS_Store
+Thumbs.db

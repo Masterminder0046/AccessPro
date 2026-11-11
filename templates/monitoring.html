@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Live Examination Monitoring — AssessPro{% endblock %}
+{% block page_title %}Real-Time Examination Proctoring & Monitoring{% endblock %}
+
+{% block topbar_actions %}
+  <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #059669; font-weight: 600; background: #ecfdf5; padding: 6px 14px; border-radius: var(--radius-pill); border: 1px solid #a7f3d0;">
+    <span style="display:inline-block; width:10px; height:10px; background:#10b981; border-radius:50%; box-shadow: 0 0 8px #10b981; animation: pulseBeacon 1.5s infinite;"></span>
+    Live Telemetry Active &bull; Auto-Sync 3.5s
+  </div>
+{% endblock %}
+
+{% block content %}
+<style>
+@keyframes pulseBeacon {
+  0% { transform: scale(0.95); opacity: 0.8; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(0.95); opacity: 0.8; }
+}
+</style>
+
+<!-- Live Telemetry KPI Metrics -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Examinations In Progress</div>
+      <div class="stat-value" id="live-active-count" style="color: #2563eb;">--</div>
+      <div class="stat-subtext">Active candidates connected</div>
+    </div>
+    <div class="stat-icon blue">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Submissions Today</div>
+      <div class="stat-value" id="live-submissions-today" style="color: #059669;">--</div>
+      <div class="stat-subtext">Successfully evaluated</div>
+    </div>
+    <div class="stat-icon green">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Malpractice Flags Today</div>
+      <div class="stat-value" id="live-violations-today" style="color: #dc2626;">--</div>
+      <div class="stat-subtext">Tab switches / Focus losses</div>
+    </div>
+    <div class="stat-icon red">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+    </div>
+  </div>
+</div>
+
+<!-- Active Candidates Live Table -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Live Candidate Sessions</h2>
+    <span style="font-size: 0.8rem; color: var(--text-muted);">Real-time proctoring stream</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Candidate Details</th>
+          <th>Assessment</th>
+          <th>Connection</th>
+          <th>Time Remaining</th>
+          <th>Progress</th>
+          <th>Malpractice Flags</th>
+          <th>Client IP</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="live-monitoring-tbody">
+        <tr>
+          <td colspan="8" style="text-align: center; padding: 36px; color: var(--text-muted);">
+            Connecting to proctoring telemetry stream...
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Proctoring Security Notes -->
+<div class="card" style="background: #f8fafc;">
+  <div class="card-header" style="background: transparent;">
+    <h3 class="card-title" style="font-size: 0.95rem;">Automated Anti-Malpractice System Behavior</h3>
+  </div>
+  <div class="card-body" style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;">
+    <p>
+      The real-time proctoring engine monitors candidate sessions asynchronously using server-validated heartbeats:
+    </p>
+    <ul style="margin-left: 20px; margin-top: 8px;">
+      <li><strong>Tab Switch / Blur Detection:</strong> When a candidate minimizes their browser or switches to another tab, an automated violation is logged.</li>
+      <li><strong>Threshold Auto-Submission:</strong> If a candidate exceeds the maximum configured violations (default 3), their assessment is immediately locked and submitted with full audit logs.</li>
+      <li><strong>Remote Administrator Termination:</strong> Administrators can intervene and forcefully terminate any active session if unauthorized behavior is confirmed.</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}

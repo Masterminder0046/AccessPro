@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard Overview — AssessPro{% endblock %}
+{% block page_title %}Recruitment Operations Dashboard{% endblock %}
+
+{% block topbar_actions %}
+  <div style="display: flex; gap: 10px;">
+    <a href="{{ url_for('admin_monitoring') }}" class="btn btn-secondary">
+      <span style="display:inline-block; width:8px; height:8px; background:#10b981; border-radius:50%; margin-right:4px;"></span>
+      Live Monitoring ({{ live_sessions_count }})
+    </a>
+    <a href="{{ url_for('admin_assessments') }}" class="btn btn-primary">
+      + New Assessment
+    </a>
+  </div>
+{% endblock %}
+
+{% block content %}
+<!-- Metrics Grid -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Active Assessments</div>
+      <div class="stat-value">{{ active_exams }} <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">/ {{ total_assessments }}</span></div>
+      <div class="stat-subtext">Total assessments published</div>
+    </div>
+    <div class="stat-icon blue">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Candidates Registered</div>
+      <div class="stat-value">{{ total_candidates }}</div>
+      <div class="stat-subtext">Across placement drives</div>
+    </div>
+    <div class="stat-icon purple">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Submissions Evaluated</div>
+      <div class="stat-value">{{ completed_attempts }}</div>
+      <div class="stat-subtext">Average Score: <strong>{{ avg_score }}%</strong></div>
+    </div>
+    <div class="stat-icon green">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Pass Rate</div>
+      <div class="stat-value">{{ pass_rate }}%</div>
+      <div class="stat-subtext">Passing benchmark achieved</div>
+    </div>
+    <div class="stat-icon amber">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+    </div>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+  <!-- Left Column: Recent Attempts -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Recent Candidate Examination Attempts</h2>
+        <a href="{{ url_for('admin_results') }}" class="btn btn-sm btn-secondary">View All Results</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Candidate</th>
+              <th>Assessment</th>
+              <th>Score</th>
+              <th>Status</th>
+              <th>Violations</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if recent_attempts %}
+              {% for att in recent_attempts %}
+                <tr>
+                  <td>
+                    <div style="font-weight: 600;">{{ att.candidate.name }}</div>
+                    <div style="font-size: 0.78rem; color: var(--text-muted);">{{ att.candidate.candidate_id }}</div>
+                  </td>
+                  <td>{{ att.assessment.title }}</td>
+                  <td>
+                    <strong>{{ att.percentage }}%</strong>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ att.obtained_marks }}/{{ att.total_marks }}</div>
+                  </td>
+                  <td>
+                    {% if att.status in ('submitted', 'auto_submitted') %}
+                      <span class="badge {{ 'badge-passed' if att.passed else 'badge-failed' }}">
+                        {{ 'PASS' if att.passed else 'FAIL' }}
+                      </span>
+                    {% elif att.status == 'in_progress' %}
+                      <span class="badge badge-info">In Progress</span>
+                    {% else %}
+                      <span class="badge badge-danger">Terminated</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if att.violation_count > 0 %}
+                      <span class="badge badge-warning">{{ att.violation_count }} Flag(s)</span>
+                    {% else %}
+                      <span style="color: #10b981; font-size: 0.82rem; font-weight: 600;">Clean</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="viewAttemptDetails({{ att.id }})">
+                      Audit
+                    </button>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="6" style="text-align: center; padding: 28px; color: var(--text-muted);">
+                  No candidate attempts recorded yet.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Active Assessments Quick Table -->
+    <div class="card">
+      <div class="card-header">
+        <h2 class="card-title">Recruitment Assessment Portfolios</h2>
+        <a href="{{ url_for('admin_assessments') }}" class="btn btn-sm btn-secondary">Manage All</a>
+      </div>
+      <div class="table-responsive">
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Code & Title</th>
+              <th>Common Shared URL</th>
+              <th>Duration</th>
+              <th>Passing %</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for asm in assessments_list %}
+              {% set common_url = url_for('candidate_exam_entry', token_or_slug=asm.shared_slug or asm.code.lower(), _external=True) %}
+              <tr>
+                <td>
+                  <span class="badge" style="background:#f1f5f9; color:#0f172a; margin-right: 6px;">{{ asm.code }}</span>
+                  <strong>{{ asm.title }}</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">{{ asm.total_questions }} Questions</div>
+                </td>
+                <td>
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <input type="text" readonly value="{{ common_url }}" class="form-control" style="font-family: var(--font-mono); font-size: 0.72rem; padding: 2px 6px; width: 170px;">
+                    <button type="button" class="btn btn-sm btn-primary" onclick="copyToClipboard('{{ common_url }}')" title="Copy shared exam link">Copy</button>
+                  </div>
+                </td>
+                <td>{{ asm.duration_minutes }} mins</td>
+                <td>{{ asm.passing_percentage }}%</td>
+                <td>
+                  <span class="badge badge-{{ asm.status }}">
+                    {{ asm.status | upper }}
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Column: Quick Links & Audit Trail -->
+  <div>
+    <!-- Quick Navigation Card -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Quick Actions</h3>
+      </div>
+      <div class="card-body" style="display: flex; flex-direction: column; gap: 12px;">
+        <a href="{{ url_for('admin_assessments') }}" class="btn btn-primary" style="justify-content: flex-start;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Create New Assessment
+        </a>
+        <a href="{{ url_for('admin_questions') }}" class="btn btn-secondary" style="justify-content: flex-start;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
+          Bulk Import Questions (AI / Text / CSV)
+        </a>
+        <a href="{{ url_for('admin_candidates') }}" class="btn btn-secondary" style="justify-content: flex-start;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
+          Enroll & Assign Candidates
+        </a>
+        <a href="{{ url_for('admin_monitoring') }}" class="btn btn-secondary" style="justify-content: flex-start;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
+          Live Examination Proctoring
+        </a>
+      </div>
+    </div>
+
+    <!-- Administrative Audit Logs -->
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">System Audit Trail</h3>
+      </div>
+      <div class="card-body" style="padding: 16px;">
+        {% if recent_logs %}
+          <div style="display: flex; flex-direction: column; gap: 14px;">
+            {% for log in recent_logs %}
+              <div style="font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; padding-bottom: 10px;">
+                <div style="display: flex; justify-content: space-between; color: var(--text-muted); font-size: 0.75rem;">
+                  <span>{{ log.action }}</span>
+                  <span>{{ log.created_at.strftime('%H:%M:%S') if log.created_at else '' }}</span>
+                </div>
+                <div style="color: var(--navy-dark); font-weight: 500; margin-top: 3px;">
+                  {{ log.details or log.action }}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div style="color: var(--text-muted); font-size: 0.85rem; text-align: center; padding: 20px;">
+            No audit records yet.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Attempt Audit Modal (Managed by admin.js) -->
+<div class="modal-backdrop" id="modal-attempt-details">
+  <div class="modal-content modal-lg">
+    <div class="modal-header">
+      <h3 class="modal-title">Candidate Performance & Audit Breakdown</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-attempt-details')">&times;</button>
+    </div>
+    <div class="modal-body" id="attempt-details-body">
+      <!-- Injected via JavaScript viewAttemptDetails() -->
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal('modal-attempt-details')">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}

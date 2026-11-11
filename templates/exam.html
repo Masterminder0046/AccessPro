@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ assessment.title }} — Examination Cockpit</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231d4ed8'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
+</head>
+<body class="exam-body" oncontextmenu="return false;">
+
+  <!-- Anti-Malpractice Warning Banner -->
+  <div class="violation-banner" id="violation-alert-box" style="display: none;">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+    <div>
+      <strong id="violation-alert-count" style="display: block;">Violation Warning</strong>
+      <span id="violation-alert-msg" style="font-size: 0.82rem;"></span>
+    </div>
+  </div>
+
+  <div class="exam-cockpit">
+    <!-- Top Fixed Navigation Bar -->
+    <header class="exam-navbar">
+      <div class="exam-nav-left">
+        <div class="exam-brand">
+          <span style="background: #1d4ed8; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.85rem; font-weight: 800;">AP</span>
+          AssessPro
+        </div>
+        <div class="exam-test-name" id="exam-assessment-title">
+          {{ assessment.title }}
+        </div>
+      </div>
+
+      <div class="exam-nav-center">
+        <!-- Individual Question Timer (Hidden by default unless enabled) -->
+        <div class="timer-container" id="question-timer-box" style="display: none;">
+          <span class="timer-label">Q-Timer</span>
+          <div class="timer-box" id="question-timer-text" style="color: #2563eb;">
+            --s
+          </div>
+        </div>
+
+        <!-- Total Examination Timer -->
+        <div class="timer-container">
+          <span class="timer-label">Time Remaining</span>
+          <div class="timer-box" id="total-timer-box">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span id="total-timer-text">--:--</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="exam-nav-right">
+        <div class="candidate-badge">
+          <div class="candidate-avatar-sm" id="exam-candidate-avatar">
+            {{ candidate.name[0] | upper }}
+          </div>
+          <div>
+            <div class="candidate-meta-name" id="exam-candidate-name">{{ candidate.name }}</div>
+            <div class="candidate-meta-id" id="exam-candidate-id">{{ candidate.candidate_id }}</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="exam-workspace">
+      <!-- Left: Active Question Area -->
+      <section class="question-pane">
+        <!-- Question Toolbar -->
+        <div class="question-toolbar">
+          <span class="q-section-badge" id="q-section-name">General Section</span>
+          <div class="q-marks-badge">
+            <span>Marks: <span class="mark-positive" id="q-marks-positive">+1.0</span></span>
+            <span>Negative: <span class="mark-negative" id="q-marks-negative">-0.0</span></span>
+          </div>
+        </div>
+
+        <!-- Question Viewport -->
+        <div class="question-viewport">
+          <div class="q-number-heading" id="q-number-label">Question 1 of --</div>
+          <div class="q-statement" id="q-statement-text">
+            Loading examination questions from secure server...
+          </div>
+
+          <!-- Options -->
+          <div class="options-container" id="options-list">
+            <!-- Injected via exam.js -->
+          </div>
+        </div>
+
+        <!-- Bottom Action Footer -->
+        <footer class="exam-action-footer">
+          <div class="footer-left-actions">
+            <button type="button" class="btn btn-review" onclick="examEngine.markForReviewAndNext()">
+              Mark for Review & Next
+            </button>
+            <button type="button" class="btn btn-secondary" onclick="examEngine.clearResponse()">
+              Clear Response
+            </button>
+          </div>
+
+          <div class="footer-right-actions">
+            <button type="button" class="btn btn-secondary" id="btn-prev" onclick="examEngine.navigatePrev()">
+              &larr; Previous
+            </button>
+            <button type="button" class="btn btn-primary" onclick="examEngine.saveAndNext()">
+              Save & Next &rarr;
+            </button>
+            <button type="button" class="btn btn-success" onclick="examEngine.openSubmitModal()" style="margin-left: 12px; font-weight: 700;">
+              Submit Examination
+            </button>
+          </div>
+        </footer>
+      </section>
+
+      <!-- Right: TCS Question Palette -->
+      <aside class="palette-pane">
+        <div class="palette-header">
+          <div class="palette-title">Question Navigation Palette</div>
+        </div>
+
+        <!-- Status Legend -->
+        <div class="palette-legend">
+          <div class="legend-item">
+            <div class="legend-badge badge-answered">A</div>
+            <span>Answered</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-badge badge-not-answered">NA</div>
+            <span>Not Answered</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-badge badge-marked-review">R</div>
+            <span>Marked Review</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-badge badge-not-visited">NV</div>
+            <span>Not Visited</span>
+          </div>
+        </div>
+
+        <!-- Buttons Grid -->
+        <div class="palette-grid-wrapper">
+          <div class="palette-grid" id="palette-btn-grid">
+            <!-- 1 to N question buttons injected by exam.js -->
+          </div>
+        </div>
+
+        <!-- Summary Counts -->
+        <div class="palette-summary">
+          <div style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">
+            Assessment Progress
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.85rem;">
+            <div>Answered: <strong id="count-answered" style="color: #059669;">0</strong></div>
+            <div>Not Answered: <strong id="count-not-answered" style="color: #ea580c;">0</strong></div>
+            <div>Marked Review: <strong id="count-review" style="color: #8b5cf6;">0</strong></div>
+            <div>Not Visited: <strong id="count-not-visited" style="color: #64748b;">0</strong></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Modal: Submission Confirmation -->
+  <div class="modal-backdrop" id="modal-submit-confirm">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title">Confirm Final Submission</h3>
+        <button type="button" class="modal-close" onclick="examEngine.closeSubmitModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.95rem; margin-bottom: 16px;">
+          Are you sure you want to finalize and submit your assessment? Once submitted, responses cannot be modified.
+        </p>
+
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+          <h4 style="font-size: 0.9rem; color: var(--navy-dark); margin-bottom: 12px;">Submission Summary:</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.9rem;">
+            <div>Total Questions: <strong id="submit-modal-total">0</strong></div>
+            <div>Answered: <strong id="submit-modal-answered" style="color: #059669;">0</strong></div>
+            <div>Marked for Review: <strong id="submit-modal-review" style="color: #8b5cf6;">0</strong></div>
+            <div>Unanswered: <strong id="submit-modal-unanswered" style="color: #dc2626;">0</strong></div>
+          </div>
+        </div>
+
+        <div style="font-size: 0.85rem; color: var(--text-muted);">
+          Your responses will be securely evaluated and verified against the corporate test criteria.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="examEngine.closeSubmitModal()">Resume Exam</button>
+        <button type="button" class="btn btn-success" id="btn-final-submit" onclick="examEngine.confirmSubmit()">
+          Confirm & Submit Examination
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Automatic Malpractice Termination -->
+  <div class="modal-backdrop" id="modal-termination">
+    <div class="modal-content" style="border: 2px solid #ef4444;">
+      <div class="modal-header" style="background: #fef2f2;">
+        <h3 class="modal-title" style="color: #991b1b;">Assessment Terminated</h3>
+      </div>
+      <div class="modal-body">
+        <div style="text-align: center; padding: 16px;">
+          <div style="width: 56px; height: 56px; border-radius: 50%; background: #fee2e2; color: #dc2626; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 1.6rem; font-weight: 800;">
+            !
+          </div>
+          <h4 style="color: #991b1b; font-size: 1.2rem; margin-bottom: 8px;">Malpractice Violation Threshold Exceeded</h4>
+          <p style="color: var(--text-secondary); font-size: 0.92rem; line-height: 1.6;">
+            Your examination has been automatically locked and submitted due to repeated proctoring violations (tab switching, window focus loss, or fullscreen exit).
+          </p>
+          <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 12px;">
+            Redirecting to submission receipt in 3 seconds...
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="{{ url_for('static', filename='exam.js') }}"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initExamEngine('{{ token }}');
+    });
+  </script>
+</body>
+</html>

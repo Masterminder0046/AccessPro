@@ -1,0 +1,245 @@
+{% if mode == 'candidate_completed' %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assessment Submitted — AssessPro</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231d4ed8'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
+</head>
+<body style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;">
+  <div style="background: #ffffff; border-radius: 16px; width: 100%; max-width: 580px; padding: 40px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35); text-align: center;">
+    
+    <div style="width: 64px; height: 64px; border-radius: 50%; background: #ecfdf5; color: #10b981; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+    </div>
+
+    <h1 style="font-size: 1.5rem; color: var(--navy-dark); font-weight: 800; margin-bottom: 8px;">
+      Examination Submitted Successfully
+    </h1>
+    <p style="color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; margin-bottom: 24px;">
+      Your responses for <strong>{{ assessment.title }}</strong> have been securely recorded and finalized in the recruitment assessment portal.
+    </p>
+
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; text-align: left; margin-bottom: 24px;">
+      <div style="display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; margin-bottom: 10px;">
+        <span style="color: var(--text-muted); font-size: 0.85rem;">Candidate Name</span>
+        <strong style="color: var(--navy-dark); font-size: 0.9rem;">{{ candidate.name }}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; margin-bottom: 10px;">
+        <span style="color: var(--text-muted); font-size: 0.85rem;">Roll Number / ID</span>
+        <span style="font-family: var(--font-mono); font-weight: 700; color: var(--navy-dark);">{{ candidate.candidate_id }}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; margin-bottom: 10px;">
+        <span style="color: var(--text-muted); font-size: 0.85rem;">Assessment Code</span>
+        <span style="font-family: var(--font-mono); font-weight: 700; color: #2563eb;">{{ assessment.code }}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 1px solid #e2e8f0; margin-bottom: 10px;">
+        <span style="color: var(--text-muted); font-size: 0.85rem;">Submission Timestamp</span>
+        <span style="font-size: 0.85rem; color: var(--text-secondary);">{{ attempt.submitted_at.strftime('%Y-%m-%d %H:%M:%S UTC') if attempt and attempt.submitted_at else 'Recorded' }}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between;">
+        <span style="color: var(--text-muted); font-size: 0.85rem;">Session Status</span>
+        <span class="badge badge-success">COMPLETED</span>
+      </div>
+    </div>
+
+    <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;">
+      Assessment results and shortlist notifications will be communicated directly by the recruitment team. You may now close this browser window.
+    </div>
+  </div>
+</body>
+</html>
+
+{% else %}
+<!-- Admin Results & Reports View -->
+{% extends "base.html" %}
+
+{% block title %}Results & Performance Reports — AssessPro{% endblock %}
+{% block page_title %}Recruitment Evaluation & Performance Reports{% endblock %}
+
+{% block topbar_actions %}
+  <div style="display: flex; gap: 10px;">
+    <a href="{{ url_for('export_results_csv', assessment_id=selected_assessment_id) }}" class="btn btn-secondary">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      Export CSV Report
+    </a>
+  </div>
+{% endblock %}
+
+{% block content %}
+<!-- Assessment Filter Bar -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-body" style="padding: 16px 20px;">
+    <form method="GET" action="{{ url_for('admin_results') }}" style="display: flex; gap: 16px; align-items: center; flex-wrap: wrap;">
+      <label style="font-weight: 600; font-size: 0.9rem; color: var(--navy-dark);">Filter by Assessment:</label>
+      <select name="assessment_id" class="form-control" style="max-width: 380px;" onchange="this.form.submit()">
+        <option value="">-- All Assessments Combined --</option>
+        {% for a in assessments %}
+          <option value="{{ a.id }}" {% if selected_assessment_id == a.id %}selected{% endif %}>
+            {{ a.title }} ({{ a.code }})
+          </option>
+        {% endfor %}
+      </select>
+      {% if selected_assessment_id %}
+        <a href="{{ url_for('admin_results') }}" class="btn btn-sm btn-secondary">Clear Filter</a>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<!-- Evaluation Metrics Overview -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Total Submissions</div>
+      <div class="stat-value">{{ total_count }}</div>
+      <div class="stat-subtext">Completed candidate evaluations</div>
+    </div>
+    <div class="stat-icon blue">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Candidates Passed</div>
+      <div class="stat-value" style="color: #059669;">{{ passed_count }} <span style="font-size: 1rem; color: var(--text-muted); font-weight: 500;">/ {{ total_count }}</span></div>
+      <div class="stat-subtext">Pass Benchmark Achieved</div>
+    </div>
+    <div class="stat-icon green">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="16 12 12 8 8 12"></polyline><line x1="12" y1="16" x2="12" y2="8"></line></svg>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Average Score</div>
+      <div class="stat-value">{{ avg_score }}%</div>
+      <div class="stat-subtext">Highest: <strong>{{ highest_score }}%</strong></div>
+    </div>
+    <div class="stat-icon amber">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-info">
+      <div class="stat-label">Proctoring Flags</div>
+      <div class="stat-value" style="color: #dc2626;">{{ total_violations }}</div>
+      <div class="stat-subtext">Malpractice triggers logged</div>
+    </div>
+    <div class="stat-icon red">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+    </div>
+  </div>
+</div>
+
+<!-- Candidate Rankings Table -->
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Candidate Rankings & Detailed Performance</h2>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Candidate</th>
+          <th>Assessment</th>
+          <th>Score Obtained</th>
+          <th>Percentage</th>
+          <th>Accuracy Breakdown</th>
+          <th>Pass/Fail</th>
+          <th>Time Taken</th>
+          <th>Violations</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if attempts %}
+          {% for att in attempts %}
+            <tr>
+              <td>
+                <span class="badge" style="background: #f1f5f9; color: #0f172a; font-weight: 800; font-size: 0.85rem;">
+                  #{{ loop.index }}
+                </span>
+              </td>
+              <td>
+                <div style="font-weight: 700; color: var(--navy-dark);">{{ att.candidate.name }}</div>
+                <div style="font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono);">
+                  {{ att.candidate.candidate_id }} &bull; {{ att.candidate.department or 'General' }}
+                </div>
+              </td>
+              <td>
+                <div style="font-size: 0.88rem; font-weight: 600;">{{ att.assessment.title }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">{{ att.assessment.code }}</div>
+              </td>
+              <td>
+                <strong style="font-size: 1rem; color: var(--navy-dark);">{{ att.obtained_marks }}</strong>
+                <span style="color: var(--text-muted); font-size: 0.8rem;">/ {{ att.total_marks }}</span>
+              </td>
+              <td>
+                <div style="font-weight: 800; font-size: 1rem; color: {{ '#059669' if att.passed else '#dc2626' }};">
+                  {{ att.percentage }}%
+                </div>
+              </td>
+              <td>
+                <div style="display: flex; gap: 8px; font-size: 0.78rem;">
+                  <span style="color: #059669; font-weight: 700;">✓ {{ att.correct_count }}</span>
+                  <span style="color: #dc2626; font-weight: 700;">✗ {{ att.incorrect_count }}</span>
+                  <span style="color: #64748b;">— {{ att.unanswered_count }}</span>
+                </div>
+              </td>
+              <td>
+                <span class="badge {{ 'badge-passed' if att.passed else 'badge-failed' }}">
+                  {{ 'PASS' if att.passed else 'FAIL' }}
+                </span>
+              </td>
+              <td style="font-family: var(--font-mono); font-size: 0.85rem;">
+                {{ (att.time_taken_seconds // 60) }}m {{ (att.time_taken_seconds % 60) }}s
+              </td>
+              <td>
+                {% if att.violation_count > 0 %}
+                  <span class="badge badge-danger">{{ att.violation_count }} Flag(s)</span>
+                {% else %}
+                  <span style="color: #10b981; font-size: 0.82rem; font-weight: 600;">Clean</span>
+                {% endif %}
+              </td>
+              <td>
+                <button type="button" class="btn btn-sm btn-primary" onclick="viewAttemptDetails({{ att.id }})">
+                  Audit Breakdown
+                </button>
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="10" style="text-align: center; padding: 36px; color: var(--text-muted);">
+              No submissions found for the selected criteria.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Attempt Audit Modal (Managed by admin.js) -->
+<div class="modal-backdrop" id="modal-attempt-details">
+  <div class="modal-content modal-lg">
+    <div class="modal-header">
+      <h3 class="modal-title">Candidate Performance & Question Audit Breakdown</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-attempt-details')">&times;</button>
+    </div>
+    <div class="modal-body" id="attempt-details-body">
+      <!-- Injected via viewAttemptDetails() in admin.js -->
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeModal('modal-attempt-details')">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% endif %}

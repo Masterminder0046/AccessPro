@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In — AssessPro Recruitment Platform</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231d4ed8'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
+</head>
+<body class="auth-page">
+  <div class="auth-card">
+    <div class="auth-header">
+      <div class="auth-logo">AP</div>
+      <h2 class="auth-title">AssessPro Enterprise</h2>
+      <p class="auth-subtitle">Smart Recruitment & Examination System</p>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">
+            <span>{{ message }}</span>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% if error %}
+      <div class="alert alert-danger">
+        <span>{{ error }}</span>
+      </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('login') }}">
+      <div class="form-group">
+        <label class="form-label" for="username">Administrator Username or Email</label>
+        <input type="text" id="username" name="username" class="form-control" placeholder="admin" required autofocus value="admin">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="password">Password</label>
+        <input type="password" id="password" name="password" class="form-control" placeholder="••••••••" required value="admin123">
+      </div>
+
+      <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+        <label class="form-check">
+          <input type="checkbox" class="form-check-input" checked>
+          <span>Keep me signed in</span>
+        </label>
+        <span style="color: var(--text-muted); font-size: 0.8rem;">Role: Enterprise Admin</span>
+      </div>
+
+      <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1rem;">
+        Sign In to Portal
+      </button>
+
+      <div style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 0.82rem; color: var(--text-muted); text-align: center;">
+        <div>Default demo credentials: <strong>admin</strong> / <strong>admin123</strong></div>
+        <div style="margin-top: 6px;">Candidates access assessments directly via secure invitation links.</div>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

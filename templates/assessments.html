@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block title %}Assessments Management — AssessPro{% endblock %}
+{% block page_title %}Recruitment Assessments Portfolio{% endblock %}
+
+{% block topbar_actions %}
+  <button type="button" class="btn btn-primary" onclick="openModal('modal-create-assessment')">
+    + Create Assessment
+  </button>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2 class="card-title">Available Assessments ({{ assessments | length }})</h2>
+  </div>
+  <div class="table-responsive">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Code & Title</th>
+          <th>Common Assessment Link</th>
+          <th>Questions & Marks</th>
+          <th>Duration & Timers</th>
+          <th>Randomization</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if assessments %}
+          {% for asm in assessments %}
+            {% set common_url = url_for('candidate_exam_entry', token_or_slug=asm.shared_slug or asm.code.lower(), _external=True) %}
+            <tr>
+              <td>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="badge" style="background:#f1f5f9; color:#0f172a; font-family: var(--font-mono);">{{ asm.code }}</span>
+                  <strong style="color: var(--navy-dark); font-size: 0.95rem;">{{ asm.title }}</strong>
+                </div>
+                <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 4px;">{{ asm.description[:75] }}{% if asm.description|length > 75 %}...{% endif %}</div>
+              </td>
+              <td>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span class="badge {{ 'badge-success' if asm.enable_shared_link else 'badge-danger' }}" style="font-size: 0.72rem;">
+                      {{ 'SHARED LINK ACTIVE' if asm.enable_shared_link else 'LINK DISABLED' }}
+                    </span>
+                    {% if asm.access_code %}
+                      <span class="badge badge-warning" title="Access code required">Passkey: {{ asm.access_code }}</span>
+                    {% endif %}
+                  </div>
+                  <div style="display: flex; gap: 6px;">
+                    <input type="text" readonly value="{{ common_url }}" class="form-control" style="font-family: var(--font-mono); font-size: 0.75rem; padding: 4px 8px; width: 220px;">
+                    <button type="button" class="btn btn-sm btn-primary" onclick="copyToClipboard('{{ common_url }}')" title="Copy common link for candidates">
+                      Copy
+                    </button>
+                    <form method="POST" action="{{ url_for('toggle_shared_link', id=asm.id) }}" style="display: inline;">
+                      <button type="submit" class="btn btn-sm {{ 'btn-warning' if asm.enable_shared_link else 'btn-success' }}" title="Toggle Link Status">
+                        {{ 'Disable' if asm.enable_shared_link else 'Enable' }}
+                      </button>
+                    </form>
+                  </div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 2px;">
+                    Visits: <strong>{{ asm.link_visits_count or 0 }}</strong> &bull;
+                    Started: <strong>{{ asm.started_attempts_count }}</strong> &bull;
+                    Done: <strong>{{ asm.completed_attempts_count }}</strong>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div><strong>{{ asm.questions_to_deliver or asm.total_questions }}</strong> Questions</div>
+                <div style="font-size: 0.78rem; color: var(--text-muted);">Max: {{ asm.total_marks }} Marks</div>
+              </td>
+              <td>
+                <div>{{ asm.duration_minutes }} Mins Total</div>
+                <div style="font-size: 0.78rem; color: var(--text-muted);">
+                  {% if asm.enable_question_timer %}
+                    <span style="color: #2563eb; font-weight: 600;">{{ asm.default_question_time }}s/Question</span>
+                  {% else %}
+                    No Per-Q Limit
+                  {% endif %}
+                </div>
+              </td>
+              <td>
+                <div style="font-size: 0.8rem;">
+                  {% if asm.randomize_questions %}<span class="badge badge-info">Random Qs</span>{% endif %}
+                  {% if asm.randomize_options %}<span class="badge badge-info">Random Opts</span>{% endif %}
+                  {% if asm.randomize_sections %}<span class="badge badge-info">Sections</span>{% endif %}
+                </div>
+                <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">
+                  Max Attempts: {{ asm.max_attempts_per_candidate or 1 }}
+                </div>
+              </td>
+              <td>
+                <span class="badge badge-{{ asm.status }}">
+                  {{ asm.status | upper }}
+                </span>
+              </td>
+              <td>
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                  <a href="{{ url_for('manage_assessment_questions', id=asm.id) }}" class="btn btn-sm btn-secondary" title="Attach/Manage Questions">
+                    Questions ({{ asm.total_questions }})
+                  </a>
+                  <button type="button" class="btn btn-sm btn-secondary" onclick="openAssignModal({{ asm.id }}, '{{ asm.title }}')" title="Assign Candidates Individually">
+                    Assign
+                  </button>
+                  <form method="POST" action="{{ url_for('publish_assessment', id=asm.id) }}" style="display: inline;">
+                    <button type="submit" class="btn btn-sm {{ 'btn-warning' if asm.status == 'published' else 'btn-success' }}" title="Toggle Publish">
+                      {{ 'Unpublish' if asm.status == 'published' else 'Publish' }}
+                    </button>
+                  </form>
+                  <form method="POST" action="{{ url_for('delete_assessment', id=asm.id) }}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete assessment \'{{ asm.title }}\'?');">
+                    <button type="submit" class="btn btn-sm btn-danger" title="Delete">
+                      &times;
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 36px; color: var(--text-muted);">
+              No assessments created yet. Click "+ Create Assessment" above to build your first examination.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal: Create Assessment -->
+<div class="modal-backdrop" id="modal-create-assessment">
+  <div class="modal-content modal-lg">
+    <div class="modal-header">
+      <h3 class="modal-title">Create Recruitment Assessment & Common Shared Link</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-create-assessment')">&times;</button>
+    </div>
+    <form method="POST" action="{{ url_for('create_assessment') }}">
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group" style="flex: 2;">
+            <label class="form-label" for="asm-title">Assessment Title *</label>
+            <input type="text" id="asm-title" name="title" class="form-control" placeholder="e.g. Campus Recruitment Test 2026 - Phase 1" required>
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label class="form-label" for="asm-code">Assessment Code *</label>
+            <input type="text" id="asm-code" name="code" class="form-control" placeholder="e.g. CRT-2026-P1" required style="font-family: var(--font-mono); text-transform: uppercase;">
+          </div>
+        </div>
+
+        <!-- Common Link Configuration Box -->
+        <div style="background: #eff6ff; border: 2px solid #bfdbfe; border-radius: 8px; padding: 18px; margin-bottom: 18px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h4 style="font-size: 0.95rem; color: #1e40af; margin: 0; font-weight: 700;">Common Shared Assessment Link Settings</h4>
+            <label class="form-check" style="margin: 0;">
+              <input type="checkbox" name="enable_shared_link" class="form-check-input" checked>
+              <span style="font-weight: 700; color: #1e40af;">Enable Common Link</span>
+            </label>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="asm-slug">Shared URL Slug (/exam/&lt;slug&gt;)</label>
+              <input type="text" id="asm-slug" name="shared_slug" class="form-control" placeholder="e.g. campus-2026" style="font-family: var(--font-mono); font-size: 0.88rem;">
+              <span class="form-text">Candidates access assessment via /exam/&lt;slug&gt;</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="asm-access-code">Access Code / Passkey (Optional)</label>
+              <input type="text" id="asm-access-code" name="access_code" class="form-control" placeholder="e.g. PASS2026" style="font-family: var(--font-mono);">
+              <span class="form-text">Leave blank if no passkey is required</span>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="asm-max-attempts">Max Attempts per Candidate</label>
+              <input type="number" id="asm-max-attempts" name="max_attempts_per_candidate" class="form-control" value="1" min="1" max="10">
+              <span class="form-text">Default 1 attempt</span>
+            </div>
+          </div>
+          <div style="display: flex; gap: 20px; font-size: 0.85rem; margin-top: 6px;">
+            <label class="form-check">
+              <input type="checkbox" name="allow_self_registration" class="form-check-input" checked>
+              <span>Allow Candidate Self-Registration on Link</span>
+            </label>
+            <label class="form-check">
+              <input type="checkbox" name="allow_duplicate_attempts" class="form-check-input">
+              <span>Allow Duplicate Attempts</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="asm-desc">Brief Description / Job Role</label>
+          <input type="text" id="asm-desc" name="description" class="form-control" placeholder="Software Engineering Graduate Assessment for campus recruitment">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="asm-inst">Examination Instructions for Candidates</label>
+          <textarea id="asm-inst" name="instructions" class="form-control" rows="3">1. Total examination duration must be respected. Refreshing the browser will not reset the timer.
+2. Fullscreen mode is mandatory. Switching browser tabs, minimizing the window, or exiting fullscreen records anti-malpractice violations.
+3. Once the maximum allowed violations are reached, your assessment will be automatically submitted and locked.
+4. Each candidate receives an independently randomized paper.</textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="asm-duration">Total Duration (Minutes) *</label>
+            <input type="number" id="asm-duration" name="duration_minutes" class="form-control" value="45" min="5" max="360" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="asm-pass">Passing Percentage (%) *</label>
+            <input type="number" id="asm-pass" name="passing_percentage" class="form-control" value="60" min="1" max="100" step="0.5" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="asm-violations">Max Allowed Violations</label>
+            <input type="number" id="asm-violations" name="max_violations" class="form-control" value="3" min="1" max="10">
+            <span class="form-text">Auto-submit on reaching threshold</span>
+          </div>
+        </div>
+
+        <!-- Timer & Marking Policies -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+          <h4 style="font-size: 0.9rem; color: var(--navy-dark); margin-bottom: 12px;">Timer & Marking Policies</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div>
+              <label class="form-check" style="margin-bottom: 8px;">
+                <input type="checkbox" name="enable_question_timer" class="form-check-input" checked>
+                <span style="font-weight: 600;">Enable Individual Question Timers</span>
+              </label>
+              <div style="padding-left: 26px;">
+                <input type="number" name="default_question_time" class="form-control form-control-sm" value="60" min="10" max="600" placeholder="Seconds per question">
+                <span class="form-text">Question advances on timeout</span>
+              </div>
+            </div>
+
+            <div>
+              <label class="form-check" style="margin-bottom: 8px;">
+                <input type="checkbox" name="enable_negative_marking" class="form-check-input" checked>
+                <span style="font-weight: 600;">Enable Negative Marking</span>
+              </label>
+              <div style="padding-left: 26px;">
+                <input type="number" step="0.05" name="negative_marking_rate" class="form-control form-control-sm" value="0.5" min="0" max="5" placeholder="Deduction per incorrect">
+                <span class="form-text">Marks deducted for wrong answers</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Proctoring & Independent Randomization -->
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px;">
+          <h4 style="font-size: 0.9rem; color: var(--navy-dark); margin-bottom: 12px;">Proctoring & Per-Candidate Randomization</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 0.88rem;">
+            <label class="form-check">
+              <input type="checkbox" name="randomize_questions" class="form-check-input" checked>
+              <span><strong>Random Question Ordering</strong> (Unique per candidate)</span>
+            </label>
+            <label class="form-check">
+              <input type="checkbox" name="randomize_options" class="form-check-input" checked>
+              <span><strong>Random MCQ Option Ordering</strong> (Unique per candidate)</span>
+            </label>
+            <label class="form-check">
+              <input type="checkbox" name="randomize_sections" class="form-check-input" checked>
+              <span><strong>Section-Wise Randomization</strong> (Shuffle within section)</span>
+            </label>
+            <label class="form-check">
+              <input type="checkbox" name="strict_fullscreen" class="form-check-input" checked>
+              <span>Strict Fullscreen Enforcement</span>
+            </label>
+            <label class="form-check">
+              <input type="checkbox" name="block_copy_paste" class="form-check-input" checked>
+              <span>Block Copy / Paste & Right-Click</span>
+            </label>
+            <label class="form-check">
+              <input type="checkbox" name="allow_backtracking" class="form-check-input" checked>
+              <span>Allow Navigation to Previous Questions</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-create-assessment')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create Assessment</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Assign Candidates -->
+<div class="modal-backdrop" id="modal-assign-candidates">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 class="modal-title">Assign Candidates Individually</h3>
+      <button type="button" class="modal-close" onclick="closeModal('modal-assign-candidates')">&times;</button>
+    </div>
+    <form method="POST" id="form-assign-candidates" action="">
+      <div class="modal-body">
+        <p style="font-size: 0.9rem; margin-bottom: 14px;">Select candidates to assign to <strong id="assign-target-name"></strong>:</p>
+        <div style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; border-radius: 6px; padding: 10px;">
+          {% for c in candidates %}
+            <label class="form-check" style="padding: 6px 0; border-bottom: 1px solid #f1f5f9;">
+              <input type="checkbox" name="candidate_ids" value="{{ c.id }}" class="form-check-input">
+              <span><strong>{{ c.name }}</strong> ({{ c.candidate_id }}) - {{ c.email }}</span>
+            </label>
+          {% endfor %}
+          {% if not candidates %}
+            <div style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">
+              No candidates found. Please register candidates first.
+            </div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('modal-assign-candidates')">Cancel</button>
+        <button type="submit" class="btn btn-primary">Confirm Assignment</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openAssignModal(assessmentId, title) {
+    document.getElementById('assign-target-name').innerText = title;
+    document.getElementById('form-assign-candidates').action = `/admin/assessments/${assessmentId}/assign`;
+    openModal('modal-assign-candidates');
+  }
+</script>
+{% endblock %}
