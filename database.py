@@ -15,11 +15,46 @@ from werkzeug.security import generate_password_hash, check_password_hash
 # ---------------------------------------------------------
 load_dotenv()
 
-TURSO_DATABASE_URL = os.environ.get(
-    'TURSO_DATABASE_URL',
-    'libsql://assessment-approtech-tech.aws-us-west-2.turso.io'
-).strip()
-TURSO_AUTH_TOKEN = os.environ.get('TURSO_AUTH_TOKEN', '').strip()
+
+def get_turso_config():
+    """
+    Extracts host, auth token, and database URL cleanly from environment.
+    Supports token from TURSO_AUTH_TOKEN, TURSO_TOKEN, LIBSQL_AUTH_TOKEN,
+    or encoded inside TURSO_DATABASE_URL query parameter.
+    Never exposes raw tokens in logs or errors.
+    """
+    raw_url = os.environ.get(
+        'TURSO_DATABASE_URL',
+        'libsql://assessment-approtech-tech.aws-us-west-2.turso.io'
+    ).strip().strip("'\"")
+
+    token = (
+        os.environ.get('TURSO_AUTH_TOKEN')
+        or os.environ.get('TURSO_TOKEN')
+        or os.environ.get('LIBSQL_AUTH_TOKEN')
+        or ''
+    ).strip().strip("'\"")
+
+    url_to_parse = raw_url
+    if not url_to_parse.startswith(('http://', 'https://', 'libsql://', 'ws://', 'wss://')):
+        url_to_parse = f"libsql://{url_to_parse}"
+
+    parsed = urllib.parse.urlparse(url_to_parse)
+    host = parsed.netloc if parsed.netloc else (parsed.hostname or parsed.path)
+
+    qs = urllib.parse.parse_qs(parsed.query)
+    if not token:
+        token = (
+            qs.get('authToken', [''])[0]
+            or qs.get('auth_token', [''])[0]
+            or qs.get('token', [''])[0]
+            or ''
+        ).strip().strip("'\"")
+
+    return host, token, raw_url
+
+
+TURSO_DATABASE_HOST, TURSO_AUTH_TOKEN, TURSO_DATABASE_URL = get_turso_config()
 
 
 # ---------------------------------------------------------
@@ -76,7 +111,8 @@ class TursoCursor:
             for k, v in parameters.items():
                 if isinstance(v, (datetime, date)):
                     v = v.isoformat(sep=' ')
-                named.append({"name": k, "value": _value_to_proto(v)})
+                param_name = str(k).lstrip(':')
+                named.append({"name": param_name, "value": _value_to_proto(v)})
             return [], named
         args = []
         for v in parameters:
@@ -197,12 +233,18 @@ class TursoConnection:
         self.host = host
         self.timeout = 30
         self._baton = None
+        self._base_url = None
         self.isolation_level = None
 
-    def _send_requests(self, requests):
+    def _get_target_url(self):
+        if self._base_url and self._baton:
+            return f"{self._base_url.rstrip('/')}/v2/pipeline"
+        return self.endpoint_url
+
+    def _send_requests(self, requests, retry_on_stale=True):
         if not self.auth_token:
             raise sqlite3.OperationalError(
-                "TURSO_AUTH_TOKEN is missing. Please set TURSO_AUTH_TOKEN in your environment or .env file."
+                "TURSO_AUTH_TOKEN is missing. Please set TURSO_AUTH_TOKEN in your environment or Vercel settings."
             )
         body = {
             "baton": self._baton,
@@ -213,18 +255,31 @@ class TursoConnection:
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.auth_token}"
         }
-        req = urllib.request.Request(self.endpoint_url, data=data, headers=headers, method="POST")
+        target_url = self._get_target_url()
+        req = urllib.request.Request(target_url, data=data, headers=headers, method="POST")
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                 resp_data = json.loads(resp.read().decode("utf-8"))
                 self._baton = resp_data.get("baton", self._baton)
+                if "base_url" in resp_data and resp_data["base_url"]:
+                    self._base_url = resp_data["base_url"]
                 return resp_data.get("results", [])
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", errors="ignore")
+            # If baton expired or stream was not found, retry once on a fresh connection
+            if retry_on_stale and self._baton and e.code in (400, 404):
+                self._baton = None
+                self._base_url = None
+                return self._send_requests(requests, retry_on_stale=False)
+
             if e.code in (401, 403):
                 raise sqlite3.OperationalError(f"Turso authentication failed ({e.code}): Invalid or expired TURSO_AUTH_TOKEN: {err_body}")
             raise sqlite3.OperationalError(f"Turso HTTP {e.code} error: {err_body}")
         except Exception as e:
+            if retry_on_stale and self._baton:
+                self._baton = None
+                self._base_url = None
+                return self._send_requests(requests, retry_on_stale=False)
             raise sqlite3.OperationalError(f"Turso connection error: {str(e)}")
 
     def cursor(self):
@@ -233,24 +288,32 @@ class TursoConnection:
     def commit(self):
         if self._baton:
             try:
-                self._send_requests([{"type": "execute", "stmt": {"sql": "COMMIT;", "want_rows": False}}])
-            except sqlite3.OperationalError:
+                self._send_requests([{"type": "execute", "stmt": {"sql": "COMMIT;", "want_rows": False}}], retry_on_stale=False)
+            except Exception:
                 pass
+            finally:
+                self._baton = None
+                self._base_url = None
 
     def rollback(self):
         if self._baton:
             try:
-                self._send_requests([{"type": "execute", "stmt": {"sql": "ROLLBACK;", "want_rows": False}}])
-            except sqlite3.OperationalError:
+                self._send_requests([{"type": "execute", "stmt": {"sql": "ROLLBACK;", "want_rows": False}}], retry_on_stale=False)
+            except Exception:
                 pass
+            finally:
+                self._baton = None
+                self._base_url = None
 
     def close(self):
         if self._baton:
             try:
-                self._send_requests([{"type": "close"}])
+                self._send_requests([{"type": "close"}], retry_on_stale=False)
             except Exception:
                 pass
-            self._baton = None
+            finally:
+                self._baton = None
+                self._base_url = None
 
     @property
     def total_changes(self):
@@ -262,17 +325,31 @@ _turso_dbapi = types.ModuleType("libsql_experimental")
 _turso_dbapi.Connection = TursoConnection
 
 def turso_connect(database, *args, **kwargs):
-    # Support local database paths if explicitly passed
-    if database == ":memory:" or (not database.startswith("http://") and not database.startswith("https://") and "turso.io" not in database):
+    # Support memory only for testing if explicitly passed
+    if database == ":memory:":
         valid_kwargs = {k: v for k, v in kwargs.items() if k in ("timeout", "detect_types", "isolation_level", "check_same_thread", "uri")}
         return sqlite3.connect(database, **valid_kwargs)
 
-    parsed = urllib.parse.urlparse(database)
-    host = parsed.netloc or parsed.path
+    parsed = urllib.parse.urlparse(database if "://" in str(database) else f"https://{database}")
+    host = parsed.netloc if parsed.netloc else (parsed.hostname or parsed.path)
     qs = urllib.parse.parse_qs(parsed.query)
 
-    token = qs.get("authToken", [None])[0] or qs.get("auth_token", [None])[0] or os.environ.get("TURSO_AUTH_TOKEN", "").strip()
-    scheme = "http" if parsed.scheme in ("http", "ws") else "https"
+    _, default_token, raw_url = get_turso_config()
+    token = (
+        qs.get("authToken", [None])[0]
+        or qs.get("auth_token", [None])[0]
+        or default_token
+    )
+    if token:
+        token = token.strip().strip("'\"")
+
+    is_http = (
+        parsed.scheme in ("http", "ws")
+        or raw_url.startswith("http://")
+        or "127.0.0.1" in host
+        or "localhost" in host
+    )
+    scheme = "http" if is_http else "https"
     endpoint = f"{scheme}://{host}/v2/pipeline"
     return TursoConnection(endpoint, token, host=host)
 
@@ -293,7 +370,7 @@ _turso_dbapi.InternalError = sqlite3.InternalError
 
 sys.modules["libsql_experimental"] = _turso_dbapi
 
-# Now import sqlalchemy_libsql to guarantee dialect registration
+# Guarantee dialect registration
 try:
     import sqlalchemy_libsql
 except ImportError:
@@ -302,27 +379,39 @@ except ImportError:
 
 def get_database_uri():
     """Generates the SQLAlchemy URI using the sqlalchemy-libsql dialect."""
-    raw_url = os.environ.get(
-        'TURSO_DATABASE_URL',
-        'libsql://assessment-approtech-tech.aws-us-west-2.turso.io'
-    ).strip()
-    token = os.environ.get('TURSO_AUTH_TOKEN', '').strip()
-
-    if "://" in raw_url:
-        host = raw_url.split("://", 1)[1].rstrip("/")
-    else:
-        host = raw_url.rstrip("/")
-
-    if "/" in host:
-        host = host.split("/", 1)[0]
-
-    # Provide URI with sqlalchemy-libsql dialect
+    host, token, raw_url = get_turso_config()
+    is_insecure = raw_url.startswith('http://') or '127.0.0.1' in host or 'localhost' in host
+    secure_param = "false" if is_insecure else "true"
+    # Always target remote Turso via sqlite+libsql dialect (never fallback to local SQLite)
     if token:
-        return f"sqlite+libsql://{host}?authToken={token}&secure=true"
-    elif os.environ.get("USE_LOCAL_FALLBACK") == "1":
-        return "sqlite:///assesspro.db"
+        return f"sqlite+libsql://{host}?authToken={token}&secure={secure_param}"
     else:
-        return f"sqlite+libsql://{host}?secure=true"
+        return f"sqlite+libsql://{host}?secure={secure_param}"
+
+
+def verify_database_connectivity():
+    """
+    Verifies connection to remote Turso database.
+    Returns (status: bool, message: str).
+    Never exposes credentials or tokens in output.
+    """
+    host, token, _ = get_turso_config()
+    if not token:
+        return False, "TURSO_AUTH_TOKEN is not configured in environment or Vercel settings."
+    try:
+        conn = turso_connect(get_database_uri())
+        cur = conn.cursor()
+        cur.execute("SELECT 1;")
+        res = cur.fetchone()
+        conn.close()
+        if res and res[0] == 1:
+            return True, f"Successfully connected to Turso database at {host}"
+        return False, "Unexpected response from Turso database."
+    except Exception as e:
+        safe_msg = str(e)
+        if token and token in safe_msg:
+            safe_msg = safe_msg.replace(token, "[REDACTED]")
+        return False, f"Failed to connect to Turso: {type(e).__name__}: {safe_msg}"
 
 
 db = SQLAlchemy()

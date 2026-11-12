@@ -1,28 +1,26 @@
-## TURSO DATABASE CONFIGURATION ONLY
+Fix AssessPro production Admin Login HTTP 500.
 
-Integrate TursoDB into the existing AssessPro project.
+Inspect the Vercel runtime logs and identify the exact exception.
 
-Database URL:
-`libsql://assessment-approtech-tech.aws-us-west-2.turso.io`
+Important log clue:
+"Database initialization deferred (set TURSO_AUTH_TOKEN to seed): sqlite3.OperationalError"
 
-Use environment variables:
-- `TURSO_DATABASE_URL`
-- `TURSO_AUTH_TOKEN`
+Investigate:
 
-Requirements:
-1. Use SQLAlchemy with the `sqlalchemy-libsql` dialect.
-2. Configure the connection in `database.py`.
-3. Keep all database models in `database.py`.
-4. Connect all existing application features to TursoDB.
-5. Persist candidates, assessments, questions, randomized papers, answers, attempts, timers, violations and results in TursoDB.
-6. Verify database connectivity and CRUD operations.
-7. Preserve the existing two-Python-file architecture (`app.py` and `database.py`).
-8. Do not use local SQLite as the production database.
-9. Never hardcode database credentials.
-10. Never expose database tokens in frontend code or GitHub.
-11. Add `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` to `.env.example` with empty placeholder values.
-12. Do not modify hosting, Vercel configuration, deployment files or deployment settings.
+1. Verify TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are read correctly.
+2. Verify database.py actually connects to the remote Turso database using sqlalchemy-libsql.
+3. Check whether any SQLite fallback or local SQLite initialization is accidentally being used in production.
+4. Verify all required tables exist in Turso.
+5. Check whether the admin account exists in the remote database.
+6. Inspect the complete POST /login traceback.
+7. Fix the actual database or authentication error.
+8. Add safe error logging without exposing credentials.
+9. Test database connectivity, admin login and candidate login.
 
-Use my newly rotated Turso authentication token through the environment variable. The previously shared token must not be reused.
+Do not replace Turso with SQLite.
+Do not hardcode credentials.
+Do not fake successful authentication.
+Do not modify the existing UI.
+Do not rewrite working features.
 
-Only implement and test the TursoDB integration. Do not change existing UI or application functionality.
+After fixing, verify the deployed login workflow.

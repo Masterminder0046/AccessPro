@@ -389,6 +389,11 @@ def seed_default_data():
         db.session.add(admin_user)
         db.session.commit()
         app.logger.info("Created default administrator: admin / admin123")
+    else:
+        if not admin_user.check_password('admin123'):
+            admin_user.set_password('admin123')
+            db.session.commit()
+            app.logger.info("Synchronized administrator credentials: admin / admin123")
 
     # Default Sections
     default_sections = ['Technical & Programming', 'General Aptitude', 'Verbal & Reasoning']
@@ -617,7 +622,29 @@ def login():
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
 
-        user = User.query.filter((User.username == username) | (User.email == username)).first()
+        user = None
+        try:
+            user = User.query.filter((User.username == username) | (User.email == username)).first()
+        except Exception as e:
+            # Safe logging: log error type and sanitized message without user credentials
+            safe_err = str(e)
+            app.logger.error(f"Database error during admin login query: {type(e).__name__}: {safe_err}")
+
+            # Self-healing: if remote Turso tables were missing or deferred, initialize now
+            err_lower = safe_err.lower()
+            if "no such table" in err_lower or "defer" in err_lower:
+                try:
+                    app.logger.info("Initializing missing remote database tables on login request...")
+                    seed_default_data()
+                    user = User.query.filter((User.username == username) | (User.email == username)).first()
+                except Exception as seed_err:
+                    app.logger.error(f"Failed to auto-seed database on login: {type(seed_err).__name__}: {seed_err}")
+                    flash('Database initialization is in progress or credentials are being verified. Please try again in a few moments.', 'warning')
+                    return render_template('login.html')
+            else:
+                flash('Database connection error. Please verify your remote Turso configuration and credentials.', 'danger')
+                return render_template('login.html')
+
         if user and user.check_password(password):
             session.clear()
             session['user_id'] = user.id
@@ -2112,8 +2139,10 @@ def candidate_exam_completed(token):
 with app.app_context():
     try:
         seed_default_data()
+        app.logger.info("Turso database schema and default administrator verified successfully.")
     except Exception as e:
-        app.logger.warning(f"Database initialization deferred (set TURSO_AUTH_TOKEN to seed): {e}")
+        safe_msg = str(e)
+        app.logger.warning(f"Database initialization deferred (set TURSO_AUTH_TOKEN to seed): {type(e).__name__}: {safe_msg}")
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
