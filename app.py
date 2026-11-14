@@ -32,6 +32,8 @@ def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session or session.get('role') != 'admin':
+            if request.path.startswith('/admin/api/') or request.is_json:
+                return jsonify({'error': 'Unauthorized: Administrator authentication required'}), 401
             flash('Please log in with administrator credentials.', 'warning')
             return redirect(url_for('login', next=request.url))
         return f(*args, **kwargs)
@@ -373,27 +375,32 @@ def evaluate_attempt(attempt):
 # ---------------------------------------------------------
 
 def seed_default_data():
-    """Initializes tables and seeds 20 questions, 5 candidates, and default admin."""
+    """Initializes tables and seeds sections and sample assessment if not present."""
     db.create_all()
 
-    # Default Admin
-    admin_user = User.query.filter_by(username='admin').first()
-    if not admin_user:
-        admin_user = User(
-            username='admin',
-            email='admin@assesspro.local',
-            role='admin',
-            full_name='System Administrator'
-        )
-        admin_user.set_password('admin123')
-        db.session.add(admin_user)
-        db.session.commit()
-        app.logger.info("Created default administrator: admin / admin123")
-    else:
-        if not admin_user.check_password('admin123'):
-            admin_user.set_password('admin123')
+    # Initial Admin Creation (via Environment Variables or one-time CLI setup)
+    existing_admin = User.query.filter_by(role='admin').first()
+    if not existing_admin:
+        init_username = (os.environ.get('INITIAL_ADMIN_USERNAME') or os.environ.get('ADMIN_USERNAME') or '').strip()
+        init_password = (os.environ.get('INITIAL_ADMIN_PASSWORD') or os.environ.get('ADMIN_PASSWORD') or '').strip()
+        init_email = (os.environ.get('INITIAL_ADMIN_EMAIL') or os.environ.get('ADMIN_EMAIL') or 'admin@assesspro.local').strip()
+
+        if init_username and init_password:
+            admin_user = User(
+                username=init_username,
+                email=init_email,
+                role='admin',
+                full_name='System Administrator'
+            )
+            admin_user.set_password(init_password)
+            db.session.add(admin_user)
             db.session.commit()
-            app.logger.info("Synchronized administrator credentials: admin / admin123")
+            app.logger.info(f"Initialized administrator account '{init_username}' from environment configuration.")
+        else:
+            app.logger.info("No administrator account detected. Configure INITIAL_ADMIN_USERNAME and INITIAL_ADMIN_PASSWORD in environment to initialize administrator.")
+    else:
+        # Existing administrator account found - do not modify or recreate credentials
+        pass
 
     # Default Sections
     default_sections = ['Technical & Programming', 'General Aptitude', 'Verbal & Reasoning']
@@ -411,9 +418,10 @@ def seed_default_data():
     sec_apt = sec_objs['General Aptitude']
     sec_verb = sec_objs['Verbal & Reasoning']
 
-    # Seed Sample Assessment with Common Link if none exists
+    # Seed Sample Assessment with Shared Link if none exists
     sample_assessment = Assessment.query.filter_by(code='GSE-2026-T1').first()
     if not sample_assessment:
+        admin_ref = User.query.filter_by(role='admin').first()
         sample_assessment = Assessment(
             title='Graduate Software Engineer Assessment 2026',
             code='GSE-2026-T1',
@@ -439,7 +447,7 @@ def seed_default_data():
             strict_fullscreen=True,
             block_copy_paste=True,
             status='published',
-            created_by_id=admin_user.id
+            created_by_id=admin_ref.id if admin_ref else None
         )
         db.session.add(sample_assessment)
         db.session.commit()
@@ -602,7 +610,42 @@ def seed_default_data():
                 db.session.add(cand)
 
         db.session.commit()
-        app.logger.info("Successfully seeded 20 questions, 5 demo candidates, and common assessment /exam/gse-2026")
+        app.logger.info("Successfully seeded 20 questions, 5 demo candidates, and sample assessment /assessment/gse-2026")
+
+
+@app.cli.command('init-admin')
+def init_admin_command():
+    """Secure one-time CLI setup to create an initial administrator account."""
+    import getpass
+    username = input("Enter administrator username: ").strip()
+    if not username:
+        print("Error: Username cannot be empty.")
+        return
+    email = input("Enter administrator email: ").strip() or f"{username}@assesspro.local"
+    password = getpass.getpass("Enter administrator password: ")
+    if not password:
+        print("Error: Password cannot be empty.")
+        return
+    confirm = getpass.getpass("Confirm administrator password: ")
+    if password != confirm:
+        print("Error: Passwords do not match.")
+        return
+
+    existing = User.query.filter((User.username == username) | (User.email == email)).first()
+    if existing:
+        print(f"Error: User with username '{username}' or email '{email}' already exists.")
+        return
+
+    admin_user = User(
+        username=username,
+        email=email,
+        role='admin',
+        full_name='System Administrator'
+    )
+    admin_user.set_password(password)
+    db.session.add(admin_user)
+    db.session.commit()
+    print(f"Administrator '{username}' created successfully.")
 
 
 # ---------------------------------------------------------
@@ -808,8 +851,8 @@ def create_assessment():
     db.session.add(new_assessment)
     db.session.commit()
 
-    log_admin_action('create_assessment', 'assessment', new_assessment.id, f'Created assessment: {title} ({code}) with common link /exam/{slug_input}')
-    flash(f'Assessment "{title}" created! Common link: /exam/{slug_input}', 'success')
+    log_admin_action('create_assessment', 'assessment', new_assessment.id, f'Created assessment: {title} ({code}) with link /assessment/{slug_input}')
+    flash(f'Assessment "{title}" created! Candidate link: /assessment/{slug_input}', 'success')
     return redirect(url_for('admin_assessments'))
 
 
@@ -1312,7 +1355,7 @@ def get_candidate_assignments(id):
         abort(404)
     assignments_data = []
     for a in cand.assignments:
-        exam_url = url_for('candidate_exam_entry', token_or_slug=a.access_token, _external=True)
+        exam_url = url_for('candidate_assessment_entry', token_or_slug=a.access_token, _external=True)
         assignments_data.append({
             'assignment_id': a.id,
             'assessment_title': a.assessment.title if a.assessment else 'Unknown',
@@ -1551,16 +1594,17 @@ def export_results_csv():
 
 
 # ---------------------------------------------------------
-# CANDIDATE EXAMINATION ENGINE & COMMON SHARED LINKS
+# CANDIDATE EXAMINATION ENGINE & SHARED ASSESSMENT LINKS
 # ---------------------------------------------------------
 
-@app.route('/exam/<token_or_slug>')
-def candidate_exam_entry(token_or_slug):
+@app.route('/assessment/<token_or_slug>', endpoint='candidate_assessment_entry')
+@app.route('/exam/<token_or_slug>', endpoint='candidate_exam_entry')
+def candidate_assessment_entry(token_or_slug):
     """
     Main Candidate Entry Point.
     Supports BOTH:
-    1. Common Assessment Link (e.g. /exam/gse-2026 or /exam/CRT-2026)
-    2. Unique Individual Candidate Token (e.g. /exam/xK9z_token)
+    1. Common Assessment Link (e.g. /assessment/gse-2026 or /exam/gse-2026)
+    2. Unique Individual Candidate Token (e.g. /assessment/xK9z_token or /exam/xK9z_token)
     """
     token_or_slug_str = str(token_or_slug).strip()
 
@@ -1577,33 +1621,53 @@ def candidate_exam_entry(token_or_slug):
     assignment = Assignment.query.filter_by(access_token=token_or_slug_str).first()
     if assignment:
         if assignment.status in ('completed', 'terminated'):
-            return redirect(url_for('candidate_exam_completed', token=token_or_slug_str))
-        return redirect(url_for('candidate_exam_instructions', token=token_or_slug_str))
+            return redirect(url_for('candidate_assessment_completed', token=token_or_slug_str))
+        return redirect(url_for('candidate_assessment_instructions', token=token_or_slug_str))
 
-    flash('Invalid examination link or assessment token.', 'danger')
-    return render_template('login.html', error='Invalid assessment invitation link or examination passkey.')
+    # 3. Invalid token or slug: render candidate error page (never admin login or routes)
+    return render_template(
+        'instructions.html',
+        mode='invalid_link',
+        error_notice='Invalid assessment invitation link or examination passkey. Please verify the URL provided by your administrator or institution.',
+        is_active=False
+    )
 
 
-@app.route('/exam/join/<slug>')
-def candidate_exam_join(slug):
-    """Explicit common examination link endpoint: /exam/join/<slug>"""
+@app.route('/assessment/join/<slug>', endpoint='candidate_assessment_join')
+@app.route('/exam/join/<slug>', endpoint='candidate_exam_join')
+def candidate_assessment_join(slug):
+    """Explicit common examination link endpoint: /assessment/join/<slug>"""
     assessment = Assessment.query.filter(
         (Assessment.shared_slug == slug) |
         (db.func.lower(Assessment.code) == slug.lower())
-    ).first_or_404()
+    ).first()
+    if not assessment:
+        return render_template(
+            'instructions.html',
+            mode='invalid_link',
+            error_notice='Assessment not found. Please verify the examination link.',
+            is_active=False
+        )
     return render_common_assessment_portal(assessment)
 
 
 def render_common_assessment_portal(assessment):
-    # Track link visits
-    assessment.link_visits_count = (assessment.link_visits_count or 0) + 1
-    db.session.commit()
+    # Track link visits safely
+    try:
+        assessment.link_visits_count = (assessment.link_visits_count or 0) + 1
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        app.logger.warning(f"Could not track link visit: {e}")
 
     now = get_utc_now()
     error_notice = None
     is_active = True
 
-    if not assessment.enable_shared_link:
+    if assessment.status != 'published':
+        error_notice = 'This assessment is currently not active or is in draft status.'
+        is_active = False
+    elif not assessment.enable_shared_link:
         error_notice = 'This common assessment link has been deactivated by the administrator.'
         is_active = False
     elif assessment.shared_link_active_from and now < assessment.shared_link_active_from:
@@ -1623,7 +1687,9 @@ def render_common_assessment_portal(assessment):
     )
 
 
-@app.route('/exam/join/<slug>/start', methods=['POST'])
+@app.route('/assessment/join/<slug>/start', methods=['POST'], endpoint='candidate_assessment_common_start')
+@app.route('/assessment/<slug>/start-common', methods=['POST'])
+@app.route('/exam/join/<slug>/start', methods=['POST'], endpoint='candidate_common_link_start')
 @app.route('/exam/<slug>/start-common', methods=['POST'])
 def candidate_common_link_start(slug):
     """
@@ -1636,29 +1702,41 @@ def candidate_common_link_start(slug):
     assessment = Assessment.query.filter(
         (Assessment.shared_slug == slug) |
         (db.func.lower(Assessment.code) == slug.lower())
-    ).first_or_404()
+    ).first()
+
+    if not assessment:
+        return render_template(
+            'instructions.html',
+            mode='invalid_link',
+            error_notice='Assessment not found. Please verify the examination link.',
+            is_active=False
+        )
 
     now = get_utc_now()
 
-    # Link status validation
+    # Link status and publication validation
+    if assessment.status != 'published':
+        flash('This assessment is not currently active.', 'danger')
+        return redirect(url_for('candidate_assessment_entry', token_or_slug=slug))
+
     if not assessment.enable_shared_link:
         flash('This shared assessment link is currently deactivated.', 'danger')
-        return redirect(url_for('candidate_exam_join', slug=slug))
+        return redirect(url_for('candidate_assessment_entry', token_or_slug=slug))
 
     if assessment.shared_link_active_from and now < assessment.shared_link_active_from:
         flash('This assessment is not yet active.', 'warning')
-        return redirect(url_for('candidate_exam_join', slug=slug))
+        return redirect(url_for('candidate_assessment_entry', token_or_slug=slug))
 
     if assessment.shared_link_expires_at and now > assessment.shared_link_expires_at:
         flash('This assessment link has expired.', 'danger')
-        return redirect(url_for('candidate_exam_join', slug=slug))
+        return redirect(url_for('candidate_assessment_entry', token_or_slug=slug))
 
     # Access Code Verification (if configured)
     if assessment.access_code:
         provided_code = request.form.get('access_code', '').strip()
         if provided_code != assessment.access_code:
             flash('Invalid access code / examination passkey. Please check and try again.', 'danger')
-            return redirect(url_for('candidate_exam_join', slug=slug))
+            return redirect(url_for('candidate_assessment_entry', token_or_slug=slug))
 
     # Candidate details from form
     c_id = request.form.get('candidate_id', '').strip()
@@ -1669,14 +1747,18 @@ def candidate_common_link_start(slug):
 
     if not c_id or not name or not email:
         flash('Roll Number/Candidate ID, Full Name, and Email are required.', 'danger')
-        return redirect(url_for('candidate_exam_join', slug=slug))
+        return redirect(url_for('candidate_assessment_entry', token_or_slug=slug))
+
+    if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+        flash('Please provide a valid email address.', 'danger')
+        return redirect(url_for('candidate_assessment_entry', token_or_slug=slug))
 
     # Resolve Candidate
     candidate = Candidate.query.filter((Candidate.candidate_id == c_id) | (Candidate.email == email)).first()
     if not candidate:
         if not assessment.allow_self_registration:
             flash('Self-registration is disabled for this assessment. Please contact the test administrator.', 'danger')
-            return redirect(url_for('candidate_exam_join', slug=slug))
+            return redirect(url_for('candidate_assessment_entry', token_or_slug=slug))
 
         candidate = Candidate(
             candidate_id=c_id,
@@ -1688,6 +1770,12 @@ def candidate_common_link_start(slug):
         db.session.add(candidate)
         db.session.flush()
     else:
+        if candidate.candidate_id != c_id and candidate.email == email:
+            flash(f'Email {email} is already registered under Candidate ID {candidate.candidate_id}. Please use your registered Candidate ID.', 'danger')
+            return redirect(url_for('candidate_assessment_entry', token_or_slug=slug))
+        if candidate.candidate_id == c_id and candidate.email != email:
+            flash(f'Candidate ID {c_id} is registered with a different email address.', 'danger')
+            return redirect(url_for('candidate_assessment_entry', token_or_slug=slug))
         if department and not candidate.department:
             candidate.department = department
         if college and not candidate.college:
@@ -1707,24 +1795,26 @@ def candidate_common_link_start(slug):
             token = active_attempt.assignment.access_token
             session['candidate_attempt_id'] = active_attempt.id
             session['candidate_token'] = token
+            session['candidate_id'] = candidate.id
+            session['candidate_name'] = candidate.name
             flash('Resumed your active examination session.', 'info')
-            return redirect(url_for('candidate_exam_take', token=token))
+            return redirect(url_for('candidate_assessment_take', token=token))
 
     completed_attempts = [a for a in attempts if a.status in ('submitted', 'auto_submitted', 'terminated')]
     if completed_attempts:
         if not assessment.allow_duplicate_attempts:
             flash('Duplicate attempts are not permitted. You have already completed this examination.', 'warning')
             token = completed_attempts[0].assignment.access_token
-            return redirect(url_for('candidate_exam_completed', token=token))
+            return redirect(url_for('candidate_assessment_completed', token=token))
 
-        if len(completed_attempts) >= assessment.max_attempts_per_candidate:
-            flash(f'Maximum allowed attempts ({assessment.max_attempts_per_candidate}) reached for this examination.', 'warning')
+        if len(completed_attempts) >= (assessment.max_attempts_per_candidate or 1):
+            flash(f'Maximum allowed attempts ({assessment.max_attempts_per_candidate or 1}) reached for this examination.', 'warning')
             token = completed_attempts[0].assignment.access_token
-            return redirect(url_for('candidate_exam_completed', token=token))
+            return redirect(url_for('candidate_assessment_completed', token=token))
 
     # Generate independently randomized question paper & option mapping
     q_order, opt_order = generate_randomized_paper(assessment)
-    token = secrets.token_urlsafe(16)
+    token = secrets.token_urlsafe(24)
 
     assignment = Assignment(
         assessment_id=assessment.id,
@@ -1773,21 +1863,45 @@ def candidate_common_link_start(slug):
     db.session.add(exam_session)
     db.session.commit()
 
-    log_candidate_activity(attempt.id, 'exam_started_common_link', f'Started exam via common link /{slug} from {request.remote_addr}')
+    log_candidate_activity(attempt.id, 'exam_started_common_link', f'Started exam via link /{slug} from {request.remote_addr}')
     session['candidate_attempt_id'] = attempt.id
     session['candidate_token'] = token
+    session['candidate_id'] = candidate.id
+    session['candidate_name'] = candidate.name
 
-    return redirect(url_for('candidate_exam_take', token=token))
+    return redirect(url_for('candidate_assessment_take', token=token))
 
 
-@app.route('/exam/<token>/instructions')
-def candidate_exam_instructions(token):
-    assignment = Assignment.query.filter_by(access_token=token).first_or_404()
+@app.route('/assessment/<token>/instructions', endpoint='candidate_assessment_instructions')
+@app.route('/exam/<token>/instructions', endpoint='candidate_exam_instructions')
+def candidate_assessment_instructions(token):
+    assignment = Assignment.query.filter_by(access_token=token).first()
+    if not assignment:
+        return render_template(
+            'instructions.html',
+            mode='invalid_link',
+            error_notice='Invalid or expired candidate assessment token.',
+            is_active=False
+        )
     assessment = assignment.assessment
     candidate = assignment.candidate
 
     if assignment.status in ('completed', 'terminated'):
-        return redirect(url_for('candidate_exam_completed', token=token))
+        return redirect(url_for('candidate_assessment_completed', token=token))
+
+    now = get_utc_now()
+    is_active = True
+    error_notice = None
+
+    if assessment.status != 'published':
+        is_active = False
+        error_notice = 'This assessment is not currently active or published.'
+    elif assignment.valid_from and now < assignment.valid_from:
+        is_active = False
+        error_notice = f'Your assessment window opens at {assignment.valid_from.strftime("%Y-%m-%d %H:%M UTC")}.'
+    elif assignment.valid_until and now > assignment.valid_until:
+        is_active = False
+        error_notice = f'Your assessment window expired at {assignment.valid_until.strftime("%Y-%m-%d %H:%M UTC")}.'
 
     return render_template(
         'instructions.html',
@@ -1795,21 +1909,43 @@ def candidate_exam_instructions(token):
         assignment=assignment,
         assessment=assessment,
         candidate=candidate,
-        token=token
+        token=token,
+        is_active=is_active,
+        error_notice=error_notice
     )
 
 
-@app.route('/exam/<token>/start', methods=['POST'])
-def candidate_exam_start(token):
-    assignment = Assignment.query.filter_by(access_token=token).first_or_404()
+@app.route('/assessment/<token>/start', methods=['POST'], endpoint='candidate_assessment_start')
+@app.route('/exam/<token>/start', methods=['POST'], endpoint='candidate_exam_start')
+def candidate_assessment_start(token):
+    assignment = Assignment.query.filter_by(access_token=token).first()
+    if not assignment:
+        return render_template(
+            'instructions.html',
+            mode='invalid_link',
+            error_notice='Invalid candidate assessment token.',
+            is_active=False
+        )
     assessment = assignment.assessment
     candidate = assignment.candidate
 
     if assignment.status in ('completed', 'terminated'):
-        return redirect(url_for('candidate_exam_completed', token=token))
+        return redirect(url_for('candidate_assessment_completed', token=token))
+
+    now = get_utc_now()
+    if assessment.status != 'published':
+        flash('This assessment is not currently active.', 'danger')
+        return redirect(url_for('candidate_assessment_instructions', token=token))
+
+    if assignment.valid_from and now < assignment.valid_from:
+        flash('This assessment is not yet available.', 'warning')
+        return redirect(url_for('candidate_assessment_instructions', token=token))
+
+    if assignment.valid_until and now > assignment.valid_until:
+        flash('This assessment window has expired.', 'danger')
+        return redirect(url_for('candidate_assessment_instructions', token=token))
 
     attempt = Attempt.query.filter_by(assignment_id=assignment.id).first()
-    now = get_utc_now()
 
     if not attempt:
         due_at = now + timedelta(minutes=assessment.duration_minutes)
@@ -1859,17 +1995,27 @@ def candidate_exam_start(token):
     log_candidate_activity(attempt.id, 'exam_started', f'Assessment session commenced from {request.remote_addr}')
     session['candidate_attempt_id'] = attempt.id
     session['candidate_token'] = token
+    session['candidate_id'] = candidate.id
+    session['candidate_name'] = candidate.name
 
-    return redirect(url_for('candidate_exam_take', token=token))
+    return redirect(url_for('candidate_assessment_take', token=token))
 
 
-@app.route('/exam/<token>/take')
-def candidate_exam_take(token):
-    assignment = Assignment.query.filter_by(access_token=token).first_or_404()
+@app.route('/assessment/<token>/take', endpoint='candidate_assessment_take')
+@app.route('/exam/<token>/take', endpoint='candidate_exam_take')
+def candidate_assessment_take(token):
+    assignment = Assignment.query.filter_by(access_token=token).first()
+    if not assignment:
+        return render_template(
+            'instructions.html',
+            mode='invalid_link',
+            error_notice='Invalid examination token.',
+            is_active=False
+        )
     attempt = Attempt.query.filter_by(assignment_id=assignment.id).first()
 
     if not attempt or attempt.status in ('submitted', 'auto_submitted', 'terminated'):
-        return redirect(url_for('candidate_exam_completed', token=token))
+        return redirect(url_for('candidate_assessment_completed', token=token))
 
     return render_template(
         'exam.html',
@@ -1881,8 +2027,9 @@ def candidate_exam_take(token):
     )
 
 
-@app.route('/api/exam/<token>/state')
-def api_exam_state(token):
+@app.route('/api/assessment/<token>/state', endpoint='api_assessment_state')
+@app.route('/api/exam/<token>/state', endpoint='api_exam_state')
+def api_assessment_state(token):
     """
     Returns full state of the exam to Vanilla JS exam engine:
     - Authoritative remaining countdown from server.
@@ -1902,7 +2049,7 @@ def api_exam_state(token):
             evaluate_attempt(attempt)
         return jsonify({
             'expired': True,
-            'redirect': url_for('candidate_exam_completed', token=token)
+            'redirect': url_for('candidate_assessment_completed', token=token)
         })
 
     remaining_seconds = max(0, int((attempt.due_at - now).total_seconds()))
@@ -1986,8 +2133,9 @@ def api_exam_state(token):
     })
 
 
-@app.route('/api/exam/<token>/save-answer', methods=['POST'])
-def api_exam_save_answer(token):
+@app.route('/api/assessment/<token>/save-answer', methods=['POST'], endpoint='api_assessment_save_answer')
+@app.route('/api/exam/<token>/save-answer', methods=['POST'], endpoint='api_exam_save_answer')
+def api_assessment_save_answer(token):
     assignment = Assignment.query.filter_by(access_token=token).first_or_404()
     attempt = Attempt.query.filter_by(assignment_id=assignment.id).first_or_404()
 
@@ -2019,8 +2167,9 @@ def api_exam_save_answer(token):
     return jsonify({'success': True})
 
 
-@app.route('/api/exam/<token>/heartbeat', methods=['POST'])
-def api_exam_heartbeat(token):
+@app.route('/api/assessment/<token>/heartbeat', methods=['POST'], endpoint='api_assessment_heartbeat')
+@app.route('/api/exam/<token>/heartbeat', methods=['POST'], endpoint='api_exam_heartbeat')
+def api_assessment_heartbeat(token):
     assignment = Assignment.query.filter_by(access_token=token).first_or_404()
     attempt = Attempt.query.filter_by(assignment_id=assignment.id).first_or_404()
 
@@ -2036,7 +2185,7 @@ def api_exam_heartbeat(token):
         return jsonify({
             'active': False,
             'expired': True,
-            'redirect': url_for('candidate_exam_completed', token=token)
+            'redirect': url_for('candidate_assessment_completed', token=token)
         })
 
     sess = ExamSession.query.filter_by(attempt_id=attempt.id, is_active=True).first()
@@ -2060,13 +2209,14 @@ def api_exam_heartbeat(token):
     return jsonify({'active': attempt.status == 'in_progress', 'remaining_seconds': remaining})
 
 
-@app.route('/api/exam/<token>/violation', methods=['POST'])
-def api_exam_violation(token):
+@app.route('/api/assessment/<token>/violation', methods=['POST'], endpoint='api_assessment_violation')
+@app.route('/api/exam/<token>/violation', methods=['POST'], endpoint='api_exam_violation')
+def api_assessment_violation(token):
     assignment = Assignment.query.filter_by(access_token=token).first_or_404()
     attempt = Attempt.query.filter_by(assignment_id=assignment.id).first_or_404()
 
     if attempt.status != 'in_progress':
-        return jsonify({'terminated': True, 'redirect': url_for('candidate_exam_completed', token=token)})
+        return jsonify({'terminated': True, 'redirect': url_for('candidate_assessment_completed', token=token)})
 
     data = request.get_json(silent=True) or {}
     v_type = data.get('violation_type', 'unspecified')
@@ -2097,12 +2247,13 @@ def api_exam_violation(token):
         'violation_count': attempt.violation_count,
         'max_violations': max_v,
         'terminated': terminated,
-        'redirect': url_for('candidate_exam_completed', token=token) if terminated else None
+        'redirect': url_for('candidate_assessment_completed', token=token) if terminated else None
     })
 
 
-@app.route('/api/exam/<token>/submit', methods=['POST'])
-def api_exam_submit(token):
+@app.route('/api/assessment/<token>/submit', methods=['POST'], endpoint='api_assessment_submit')
+@app.route('/api/exam/<token>/submit', methods=['POST'], endpoint='api_exam_submit')
+def api_assessment_submit(token):
     assignment = Assignment.query.filter_by(access_token=token).first_or_404()
     attempt = Attempt.query.filter_by(assignment_id=assignment.id).first_or_404()
 
@@ -2113,13 +2264,21 @@ def api_exam_submit(token):
 
     return jsonify({
         'success': True,
-        'redirect': url_for('candidate_exam_completed', token=token)
+        'redirect': url_for('candidate_assessment_completed', token=token)
     })
 
 
-@app.route('/exam/<token>/completed')
-def candidate_exam_completed(token):
-    assignment = Assignment.query.filter_by(access_token=token).first_or_404()
+@app.route('/assessment/<token>/completed', endpoint='candidate_assessment_completed')
+@app.route('/exam/<token>/completed', endpoint='candidate_exam_completed')
+def candidate_assessment_completed(token):
+    assignment = Assignment.query.filter_by(access_token=token).first()
+    if not assignment:
+        return render_template(
+            'instructions.html',
+            mode='invalid_link',
+            error_notice='Invalid examination token.',
+            is_active=False
+        )
     attempt = Attempt.query.filter_by(assignment_id=assignment.id).first()
 
     return render_template(
@@ -2139,7 +2298,7 @@ def candidate_exam_completed(token):
 with app.app_context():
     try:
         seed_default_data()
-        app.logger.info("Turso database schema and default administrator verified successfully.")
+        app.logger.info("Turso database schema and startup checks verified successfully.")
     except Exception as e:
         safe_msg = str(e)
         app.logger.warning(f"Database initialization deferred (set TURSO_AUTH_TOKEN to seed): {type(e).__name__}: {safe_msg}")

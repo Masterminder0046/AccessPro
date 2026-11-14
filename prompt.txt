@@ -1,26 +1,33 @@
-Fix AssessPro production Admin Login HTTP 500.
+## FIX ASSESSPRO – STUDENT LINK & ADMIN CREDENTIAL EXPOSURE
 
-Inspect the Vercel runtime logs and identify the exact exception.
+Inspect the existing AssessPro project and fix the following issues without breaking existing functionality.
 
-Important log clue:
-"Database initialization deferred (set TURSO_AUTH_TOKEN to seed): sqlite3.OperationalError"
+### 1. Student Assessment Link
+- When the admin shares an assessment URL, it must open the **Student/Candidate assessment page**, not the Admin Dashboard or Admin Login.
+- Create a separate candidate-facing route, such as `/assessment/<secure-token>`.
+- Students must see the assessment instructions or candidate login page.
+- Validate the assessment link, candidate eligibility, and availability before allowing an attempt.
+- Never expose admin routes through student assessment links.
 
-Investigate:
+### 2. Remove Default Admin Credentials
+- Remove all visible references to `admin / admin123` from login pages, dashboards, student pages, and public-facing content.
+- Never display admin credentials in the frontend, HTML, JavaScript, URLs, or API responses.
+- Check database seeding and admin account creation logic.
+- Use environment variables or a secure one-time admin setup process for initial admin creation.
+- Store only hashed passwords.
+- Do not automatically recreate a default admin account.
 
-1. Verify TURSO_DATABASE_URL and TURSO_AUTH_TOKEN are read correctly.
-2. Verify database.py actually connects to the remote Turso database using sqlalchemy-libsql.
-3. Check whether any SQLite fallback or local SQLite initialization is accidentally being used in production.
-4. Verify all required tables exist in Turso.
-5. Check whether the admin account exists in the remote database.
-6. Inspect the complete POST /login traceback.
-7. Fix the actual database or authentication error.
-8. Add safe error logging without exposing credentials.
-9. Test database connectivity, admin login and candidate login.
+### 3. Route & Access Security
+- Protect all admin routes using server-side authentication and role checks.
+- Students must never access admin dashboard, candidate records, answer keys, or results.
+- Ensure shared assessment links cannot bypass candidate authentication.
+- Keep admin and candidate sessions separate.
 
-Do not replace Turso with SQLite.
-Do not hardcode credentials.
-Do not fake successful authentication.
-Do not modify the existing UI.
-Do not rewrite working features.
+### 4. Testing
+- Test the shared assessment URL in an incognito browser.
+- Verify it opens the student interface.
+- Verify unauthenticated users cannot access admin routes.
+- Verify no default admin credentials appear anywhere publicly.
+- Test existing assessment creation, candidate login, and exam submission.
 
-After fixing, verify the deployed login workflow.
+**Important:** Inspect the existing Flask routes, templates, and database logic first. Fix the actual root cause. Do not create a duplicate application, use fake data, or break existing TursoDB integration. Keep the existing `app.py` and `database.py` architecture.

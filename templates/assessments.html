@@ -30,7 +30,7 @@
       <tbody>
         {% if assessments %}
           {% for asm in assessments %}
-            {% set common_url = url_for('candidate_exam_entry', token_or_slug=asm.shared_slug or asm.code.lower(), _external=True) %}
+            {% set common_url = url_for('candidate_assessment_entry', token_or_slug=asm.shared_slug or asm.code.lower(), _external=True) %}
             <tr>
               <td>
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -161,9 +161,9 @@
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="asm-slug">Shared URL Slug (/exam/&lt;slug&gt;)</label>
+              <label class="form-label" for="asm-slug">Shared URL Slug (/assessment/&lt;slug&gt;)</label>
               <input type="text" id="asm-slug" name="shared_slug" class="form-control" placeholder="e.g. campus-2026" style="font-family: var(--font-mono); font-size: 0.88rem;">
-              <span class="form-text">Candidates access assessment via /exam/&lt;slug&gt;</span>
+              <span class="form-text">Candidates access assessment via /assessment/&lt;slug&gt;</span>
             </div>
             <div class="form-group">
               <label class="form-label" for="asm-access-code">Access Code / Passkey (Optional)</label>

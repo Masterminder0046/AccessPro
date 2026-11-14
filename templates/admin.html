@@ -152,7 +152,7 @@
           </thead>
           <tbody>
             {% for asm in assessments_list %}
-              {% set common_url = url_for('candidate_exam_entry', token_or_slug=asm.shared_slug or asm.code.lower(), _external=True) %}
+              {% set common_url = url_for('candidate_assessment_entry', token_or_slug=asm.shared_slug or asm.code.lower(), _external=True) %}
               <tr>
                 <td>
                   <span class="badge" style="background:#f1f5f9; color:#0f172a; margin-right: 6px;">{{ asm.code }}</span>

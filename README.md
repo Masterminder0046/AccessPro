@@ -37,8 +37,8 @@ AssessPro/
 
 ## 2. Key System Capabilities
 
-### A. Common Assessment Link (`/exam/<slug>`)
-- **Single Shared Link**: Admins can distribute one shared URL (e.g. `/exam/gse-2026` or `/exam/join/gse-2026`) to multiple candidates across recruitment drives.
+### A. Common Assessment Link (`/assessment/<slug>`)
+- **Single Shared Link**: Admins can distribute one shared candidate URL (e.g. `/assessment/gse-2026` or `/assessment/join/gse-2026`) to multiple candidates across recruitment drives.
 - **Admin Controls**:
   - Enable / disable shared link with instant toggle controls.
   - Optional examination access code / passkey (e.g. `PASS2026`).
@@ -140,17 +140,21 @@ http://localhost:5000
 
 ---
 
-## 4. Default Credentials & Pre-Loaded Data
+## 4. Administrator Setup & Pre-Loaded Data
 
-Upon initial launch, the system automatically provisions:
+### Administrator Account Provisioning:
+AssessPro follows security best practices and does not store or expose default admin passwords:
+- **Environment Variables**: Configure `INITIAL_ADMIN_USERNAME` and `INITIAL_ADMIN_PASSWORD` (and optionally `INITIAL_ADMIN_EMAIL`) in your `.env` or deployment settings. On startup, if no admin account exists, an initial administrator will be securely provisioned with a hashed password.
+- **CLI Setup**: You can also initialize an administrator at any time using:
+  ```bash
+  flask init-admin
+  ```
+- **Login Portal**: `http://localhost:5000/login`
 
-- **Admin Login**:
-  - **URL**: `http://localhost:5000/login`
-  - **Username**: `admin`
-  - **Password**: `admin123`
+### Pre-Loaded Sample Data:
 - **Sample Assessment**:
   - **Title**: Graduate Software Engineer Assessment 2026 (`GSE-2026-T1`)
-  - **Common Exam Link**: `http://localhost:5000/exam/gse-2026`
+  - **Candidate Assessment Link**: `http://localhost:5000/assessment/gse-2026`
   - **Duration**: 45 Minutes
   - **Passing Benchmark**: 60%
   - **Total Marks**: 35.5 Marks
@@ -164,19 +168,17 @@ Upon initial launch, the system automatically provisions:
 
 ---
 
-## 5. Verification of the 9 Acceptance Criteria
+## 5. Verification of the Acceptance Criteria
 
-The system has been verified against all 9 acceptance criteria specified in `prompt.txt`:
+The system has been verified against the acceptance criteria:
 
-1. ✅ **All candidates use the same URL**: All 5 candidates navigate to `http://localhost:5000/exam/gse-2026`.
-2. ✅ **Each candidate gets an independently randomized paper**: Verified distinct question sequences and shuffled option cards for every candidate.
-3. ✅ **All papers follow configured section and difficulty rules**: Each paper consistently delivers 8 Technical, 7 Aptitude, and 5 Verbal questions.
-4. ✅ **Question order remains unchanged after refresh**: Verified that repeated browser reloads preserve the exact persisted question order.
-5. ✅ **Option randomization does not break answer evaluation**: Answer evaluation evaluates by `Option.id` and verifies `is_correct` with 100% precision.
-6. ✅ **Individual timers remain attached to the correct questions**: Each question preserves its individual duration limit and marks regardless of position.
-7. ✅ **All candidates receive equivalent maximum marks**: All candidate papers total 35.5 marks.
-8. ✅ **Duplicate attempts are rejected according to settings**: Re-submitting from a completed candidate redirects to the submission receipt without permitting duplicate attempts.
-9. ✅ **Admin can access individual results**: Administrators can view detailed question breakdowns, candidate choices, correct keys, and malpractice logs.
+1. ✅ **Dedicated Student Assessment Link**: Candidates access assessments directly via `http://localhost:5000/assessment/<slug>` or unique candidate tokens, opening the candidate interface and never the admin dashboard or admin login.
+2. ✅ **Zero Credential Exposure**: No visible credentials, pre-filled inputs, or default demo credentials exist in the login portal or public endpoints.
+3. ✅ **Server-Side Security**: All admin routes and API endpoints are strictly protected with server-side authentication and role checks.
+4. ✅ **Candidate Privacy & Session Isolation**: Candidates never access admin dashboards, candidate records, or answer keys. Candidate and admin sessions remain isolated.
+5. ✅ **Independent Randomization**: Each candidate receives an independently randomized paper with question and option shuffling evaluated with 100% precision.
+6. ✅ **Malpractice & Timer Enforcement**: Enforces server-authoritative countdowns, individual question timers, and tab-switch/fullscreen violation locks.
+7. ✅ **Candidate Attempt Controls**: Enforces candidate eligibility, link status, passkey validation, and duplicate attempt prevention.
 
 ---
 

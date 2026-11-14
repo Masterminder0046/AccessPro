@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Assessment Instructions — {{ assessment.title }}</title>
+  <title>{% if assessment %}Assessment Instructions — {{ assessment.title }}{% else %}AssessPro Examination Portal{% endif %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%231d4ed8'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
 </head>
@@ -19,11 +19,13 @@
         </div>
       </div>
       <div style="text-align: right;">
-        {% if mode == 'individual' %}
+        {% if mode == 'individual' and candidate %}
           <div style="font-weight: 700; color: var(--navy-dark);">{{ candidate.name }}</div>
           <div style="font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-mono);">Roll: {{ candidate.candidate_id }}</div>
+        {% elif mode == 'invalid_link' %}
+          <span class="badge badge-danger" style="font-size: 0.82rem; padding: 5px 12px;">Candidate Assessment Portal</span>
         {% else %}
-          <span class="badge badge-info" style="font-size: 0.82rem; padding: 5px 12px;">Common Shared Assessment Portal</span>
+          <span class="badge badge-info" style="font-size: 0.82rem; padding: 5px 12px;">Candidate Assessment Portal</span>
         {% endif %}
       </div>
     </div>
@@ -39,7 +41,30 @@
       {% endif %}
     {% endwith %}
 
-    <!-- Main Card -->
+    {% if mode == 'invalid_link' or not assessment %}
+    <!-- Invalid / Expired Assessment Link Display -->
+    <div class="card" style="box-shadow: var(--shadow-lg);">
+      <div class="card-header" style="background: linear-gradient(135deg, #1e293b, #0f172a); color: white; padding: 24px;">
+        <h1 style="color: white; font-size: 1.35rem; margin: 0;">Candidate Assessment Portal</h1>
+      </div>
+      <div class="card-body" style="padding: 48px 32px; text-align: center;">
+        <div style="width: 64px; height: 64px; border-radius: 50%; background: #fef2f2; color: #ef4444; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 20px;">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        </div>
+        <h2 style="font-size: 1.35rem; color: var(--navy-dark); font-weight: 800; margin-bottom: 12px;">
+          Invalid or Expired Assessment Link
+        </h2>
+        <p style="color: var(--text-muted); font-size: 0.95rem; max-width: 520px; margin: 0 auto 24px auto; line-height: 1.6;">
+          {{ error_notice or 'The assessment link or security token is invalid, expired, or has been revoked. Please check the URL provided by your recruitment team or administrator.' }}
+        </p>
+        <div style="font-size: 0.82rem; color: var(--text-muted); border-top: 1px solid #e2e8f0; padding-top: 20px; max-width: 480px; margin: 0 auto;">
+          If you believe this is an error, please contact your examination administrator or recruiter for an active invitation link.
+        </div>
+      </div>
+    </div>
+
+    {% else %}
+    <!-- Main Card for Valid Assessment -->
     <div class="card" style="box-shadow: var(--shadow-lg);">
       <div class="card-header" style="background: linear-gradient(135deg, #1e40af, #1d4ed8); color: white; padding: 24px;">
         <div>
@@ -74,9 +99,9 @@
           </div>
         </div>
 
-        {% if mode == 'common_link' and not is_active %}
+        {% if not is_active %}
           <div class="alert alert-danger" style="padding: 20px; font-size: 1rem; margin-bottom: 24px;">
-            <strong>Link Inactive:</strong> {{ error_notice or 'This shared examination link is currently closed.' }}
+            <strong>Link Inactive:</strong> {{ error_notice or 'This examination link is currently closed or not yet active.' }}
           </div>
         {% else %}
           <!-- General Instructions -->
@@ -170,7 +195,7 @@
 
           {% else %}
             <!-- Individual Candidate Direct Token Form -->
-            <form method="POST" action="{{ url_for('candidate_exam_start', token=token) }}" id="start-exam-form">
+            <form method="POST" action="{{ url_for('candidate_assessment_start', token=token) }}" id="start-exam-form">
               <label class="form-check" style="background: #eff6ff; border: 2px solid #bfdbfe; border-radius: 8px; padding: 16px; margin-bottom: 24px;">
                 <input type="checkbox" id="agree-checkbox" class="form-check-input" required style="width: 20px; height: 20px;">
                 <span style="font-size: 0.95rem; font-weight: 600; color: #1e40af;">
@@ -188,6 +213,7 @@
         {% endif %}
       </div>
     </div>
+    {% endif %}
   </div>
 
   <script>

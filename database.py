@@ -379,6 +379,8 @@ except ImportError:
 
 def get_database_uri():
     """Generates the SQLAlchemy URI using the sqlalchemy-libsql dialect."""
+    if os.environ.get('TESTING') == 'True':
+        return os.environ.get('TEST_DATABASE_URI', 'sqlite:///:memory:')
     host, token, raw_url = get_turso_config()
     is_insecure = raw_url.startswith('http://') or '127.0.0.1' in host or 'localhost' in host
     secure_param = "false" if is_insecure else "true"
@@ -418,7 +420,8 @@ db = SQLAlchemy()
 
 def init_app_database(app):
     """Configures the Flask app to use Turso via sqlalchemy-libsql dialect."""
-    app.config['SQLALCHEMY_DATABASE_URI'] = get_database_uri()
+    if not app.config.get('SQLALCHEMY_DATABASE_URI'):
+        app.config['SQLALCHEMY_DATABASE_URI'] = get_database_uri()
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     db.init_app(app)
 
